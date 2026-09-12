@@ -1,11 +1,10 @@
 # hlit
 
-![hlit demo](docs/demo/hlit_demo.gif)
+A minimalistic Electron app for highlighting screenshots — draw rectangles
+over the areas, and each rectangle applies an RGB color shift. Paste a
+screenshot, highlight selections, copy or save the result.
 
-A small Electron app for shifting the colors of specific screen regions in a
-screenshot — draw rectangles over the areas you want to call out, and each
-rectangle applies an RGB color shift instead of a stroke or blur. Paste a
-screenshot, drag out regions, copy or save the result.
+![hlit demo](docs/demo/hlit_demo.gif)
 
 ## Platform support
 

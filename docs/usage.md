@@ -35,9 +35,9 @@ for both sides, a "Mirror dark side" checkbox, *Reset*, and *Close*.
 - **Ctrl/Cmd+click a rectangle** to add it to the selection, or remove it if
   it's already selected — the usual multi-select toggle.
 - **With one or more rectangles selected, press `1`–`5`** to reassign all of
-  them to that group, as a single undo step. The active group (and any
-  digit-key behavior when nothing is selected) is unaffected — selecting
-  and reassigning existing rectangles is independent of which group new
+  them to that group, as a single undo step. The active group is
+  unaffected, and so is normal digit-key behavior when nothing is selected
+  — reassigning existing rectangles is independent of which group new
   drags go into.
 - Selected rectangles get a solid blue outline; `Escape` clears the
   selection (or closes an in-progress drag / any open popup first, if
