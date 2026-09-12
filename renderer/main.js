@@ -1,0 +1,328 @@
+// Bootstrap + input wiring: pointer drag-to-highlight, keyboard shortcuts,
+// and menu commands delivered over the preload bridge.
+
+import { state, loadImage, applySettings, setThemeList, setThemeNotifier } from './state.js'
+import * as cmd from './commands.js'
+import { fit, paint, toImage, drawOverlay, exportPng, setBitmapSize } from './view.js'
+import { init as initStatusbar, refresh as statusbarRefresh } from './statusbar.js'
+import { isProfileEditorOpen, closeProfileEditor } from './profile-editor.js'
+import { openProfilePicker, isProfilePickerOpen, handleProfilePickerKey, refreshProfilePicker } from './picker.js'
+import { openThemePicker, isThemePickerOpen, handleThemePickerKey, refreshThemePicker } from './theme-picker.js'
+import { openHelp, closeHelp, isHelpOpen } from './help.js'
+import { keyLabels } from './keylabels.js'
+
+const wrapEl = document.getElementById('wrap')
+const hintEl = document.getElementById('hint')
+const toastEl = document.getElementById('toast')
+
+let toastTimer = null
+function toast(msg) {
+  toastEl.textContent = msg
+  toastEl.classList.add('show')
+  clearTimeout(toastTimer)
+  toastTimer = setTimeout(() => toastEl.classList.remove('show'), 1600)
+}
+
+function hasImage() {
+  return state.imageW > 0 && state.imageH > 0
+}
+
+function rectBBoxOf(r) {
+  return { x: r.x, y: r.y, w: r.w, h: r.h }
+}
+
+function unionRect(a, b) {
+  if (!a) return b
+  if (!b) return a
+  const x0 = Math.min(a.x, b.x)
+  const y0 = Math.min(a.y, b.y)
+  const x1 = Math.max(a.x + a.w, b.x + b.w)
+  const y1 = Math.max(a.y + a.h, b.y + b.h)
+  return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 }
+}
+
+function findTopmostRectAt(x, y) {
+  for (let i = state.rects.length - 1; i >= 0; i--) {
+    const r = state.rects[i]
+    if (x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h) return r
+  }
+  return null
+}
+
+function buildPreviewRect(anchor, cur, group) {
+  const x = Math.min(anchor.x, cur.x)
+  const y = Math.min(anchor.y, cur.y)
+  const w = Math.abs(cur.x - anchor.x) + 1
+  const h = Math.abs(cur.y - anchor.y) + 1
+  return { x, y, w, h, group }
+}
+
+// --- Pointer: drag-to-highlight ---------------------------------------
+
+let dragging = false
+let dragAnchor = null
+let dragRect = null
+let capturedPointerId = null
+let lastPointer = { x: 0, y: 0 }
+
+function cancelDrag() {
+  dragging = false
+  if (capturedPointerId !== null) {
+    wrapEl.releasePointerCapture(capturedPointerId)
+    capturedPointerId = null
+  }
+  if (dragRect) {
+    const idx = state.rects.indexOf(dragRect)
+    if (idx !== -1) state.rects.splice(idx, 1)
+    paint(rectBBoxOf(dragRect))
+  }
+  dragRect = null
+  dragAnchor = null
+}
+
+wrapEl.addEventListener('pointerdown', (e) => {
+  if (e.button !== 0 || !hasImage()) return
+  drawOverlay(null)
+  dragAnchor = toImage(e.clientX, e.clientY)
+  dragging = true
+  dragRect = null
+  capturedPointerId = e.pointerId
+  wrapEl.setPointerCapture(e.pointerId)
+})
+
+wrapEl.addEventListener('pointermove', (e) => {
+  const p = toImage(e.clientX, e.clientY)
+  lastPointer = p
+  if (!hasImage()) return
+
+  if (dragging) {
+    const prevBBox = dragRect ? rectBBoxOf(dragRect) : null
+    if (!dragRect) {
+      dragRect = buildPreviewRect(dragAnchor, p, state.active)
+      state.rects.push(dragRect)
+    } else {
+      const next = buildPreviewRect(dragAnchor, p, state.active)
+      dragRect.x = next.x
+      dragRect.y = next.y
+      dragRect.w = next.w
+      dragRect.h = next.h
+    }
+    paint(unionRect(prevBBox, rectBBoxOf(dragRect)))
+    return
+  }
+
+  const hit = findTopmostRectAt(p.x, p.y)
+  drawOverlay(hit)
+  wrapEl.style.cursor = hit ? 'pointer' : 'crosshair'
+})
+
+wrapEl.addEventListener('pointerup', (e) => {
+  if (!dragging) return
+  dragging = false
+  if (capturedPointerId !== null) {
+    wrapEl.releasePointerCapture(capturedPointerId)
+    capturedPointerId = null
+  }
+  let realDrag = false
+  if (dragRect) {
+    const idx = state.rects.indexOf(dragRect)
+    if (idx !== -1) state.rects.splice(idx, 1)
+    const bbox = rectBBoxOf(dragRect)
+    if (dragRect.w < 3 || dragRect.h < 3) {
+      paint(bbox)
+    } else {
+      cmd.commitRect(dragRect)
+      realDrag = true
+    }
+  }
+  if (!realDrag) cmd.selectRect(findTopmostRectAt(lastPointer.x, lastPointer.y), e.ctrlKey || e.metaKey)
+  dragRect = null
+  dragAnchor = null
+})
+
+wrapEl.addEventListener('pointercancel', () => {
+  if (dragging) cancelDrag()
+})
+
+// --- Keyboard: non-modifier shortcuts only ------------------------------
+
+window.addEventListener('keydown', (e) => {
+  if (e.ctrlKey && !e.metaKey && !e.altKey && (e.key === 'r' || e.key === 'R')) {
+    handleRedo()
+    e.preventDefault()
+    return
+  }
+
+  if (e.metaKey || e.ctrlKey || e.altKey) return
+
+  if (e.target instanceof HTMLInputElement) {
+    if (e.key === 'Escape') closeProfileEditor()
+    return
+  }
+
+  if (isProfileEditorOpen()) {
+    if (e.key === 'Escape' || e.key === 'q' || e.key === 'Q') closeProfileEditor()
+    return
+  }
+
+  if (isHelpOpen()) {
+    if (e.key === 'Escape' || e.key === '?' || e.key === 'q' || e.key === 'Q') closeHelp()
+    return
+  }
+
+  if (isThemePickerOpen()) {
+    handleThemePickerKey(e.key)
+    e.preventDefault()   // Enter/Space would otherwise also activate a focused status-bar button
+    return
+  }
+
+  if (isProfilePickerOpen()) {
+    handleProfilePickerKey(e.key)
+    e.preventDefault()   // Enter/Space would otherwise also activate a focused status-bar button
+    return
+  }
+
+  if (e.key === 'p' || e.key === 'P') {
+    openProfilePicker()
+    return
+  }
+
+  if (e.key === 't' || e.key === 'T') {
+    openThemePicker()
+    return
+  }
+
+  if (e.key === '?') {
+    openHelp()
+    return
+  }
+
+  if (e.key === 'Tab') {
+    cmd.cycleActiveGroup(e.shiftKey ? -1 : 1)
+    e.preventDefault()   // Tab would otherwise move focus onto the status-bar buttons
+    return
+  }
+
+  if (e.key === 'Escape') {
+    if (dragging) {
+      cancelDrag()
+      return
+    }
+    cmd.dismissSelection()
+    return
+  }
+
+  if (e.key >= '1' && e.key <= '5') {
+    cmd.chooseGroup(Number(e.key) - 1)
+    return
+  }
+
+  if (e.key === 'o' || e.key === 'O') {
+    cmd.flipDirection()
+    return
+  }
+
+  if (e.key === 'u' || e.key === 'U') {
+    handleUndo()
+    return
+  }
+
+  if (e.key === 'Delete' || e.key === 'Backspace' || e.key === 'x' || e.key === 'X') {
+    if (!cmd.deleteAtPointer(lastPointer.x, lastPointer.y)) toast('No rectangle under the cursor')
+  }
+})
+
+// --- Menu commands (IPC) -------------------------------------------------
+
+async function handlePaste() {
+  const res = await window.hl.readClipboardImage()
+  if (!res.ok) {
+    toast('Clipboard has no image')
+    return
+  }
+  const blob = new Blob([res.png], { type: 'image/png' })
+  const bitmap = await createImageBitmap(blob)
+  const off = document.createElement('canvas')
+  off.width = bitmap.width
+  off.height = bitmap.height
+  const octx = off.getContext('2d')
+  octx.drawImage(bitmap, 0, 0)
+  const imageData = octx.getImageData(0, 0, bitmap.width, bitmap.height)
+
+  const dirty = loadImage(imageData)
+  setBitmapSize(bitmap.width, bitmap.height)
+  fit()
+  paint(dirty)
+  hintEl.style.display = 'none'
+  statusbarRefresh()
+  toast(`Pasted ${bitmap.width}\u00d7${bitmap.height}`)
+}
+
+async function handleCopy() {
+  if (!hasImage()) {
+    toast('No image to copy')
+    return
+  }
+  await window.hl.writeClipboardImage(await exportPng())
+  toast('Copied to clipboard')
+}
+
+async function handleSave() {
+  if (!hasImage()) {
+    toast('No image to save')
+    return
+  }
+  const res = await window.hl.savePng(await exportPng())
+  if (res.ok) toast(res.path)
+}
+
+function handleUndo() {
+  if (state.undo.length === 0) {
+    toast('Nothing to undo')
+    return
+  }
+  cmd.undo()
+}
+
+function handleRedo() {
+  if (state.redo.length === 0) {
+    toast('Nothing to redo')
+    return
+  }
+  cmd.redo()
+}
+
+async function loadFromDisk() {
+  if (!window.hl) return
+  const [themesRes, settingsRes] = await Promise.all([
+    typeof window.hl.listThemes === 'function' ? window.hl.listThemes() : { ok: false },
+    typeof window.hl.loadSettings === 'function' ? window.hl.loadSettings() : { ok: false }
+  ])
+  setThemeList(themesRes && themesRes.ok ? themesRes.themes : [])
+  await applySettings(settingsRes && settingsRes.ok ? settingsRes.data : null)
+  statusbarRefresh()
+}
+
+window.hl.onCommand((name) => {
+  if (name === 'paste') handlePaste()
+  else if (name === 'copy') handleCopy()
+  else if (name === 'save') handleSave()
+  else if (name === 'undo') handleUndo()
+  else if (name === 'redo') handleRedo()
+})
+
+// --- Bootstrap -------------------------------------------------------------
+
+window.addEventListener('resize', fit)
+cmd.setRenderHooks({
+  refresh: () => {
+    statusbarRefresh()
+    refreshProfilePicker()
+    refreshThemePicker()
+  },
+  hoverProbe: () => findTopmostRectAt(lastPointer.x, lastPointer.y)
+})
+hintEl.textContent = keyLabels(window.hl && window.hl.platform).hint
+initStatusbar()
+setThemeNotifier(toast)
+loadFromDisk()
