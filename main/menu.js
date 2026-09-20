@@ -8,15 +8,21 @@
 function buildMenuTemplate (platform, send) {
   const isMac = platform === 'darwin'
 
+  // Off macOS the renderer owns every Ctrl chord (see renderer/main.js), so
+  // these accelerators are displayed but not registered: Windows/Linux never
+  // gets two handlers for one keystroke, and a Chromium-reserved chord the
+  // menu would never receive still reaches the page. `registerAccelerator` is
+  // a Windows/Linux-only option; macOS always registers, which is what keeps
+  // Cmd+V/C/S/Z working there.
   const imageMenu = {
     label: 'Image',
     submenu: [
-      { label: 'Paste Screenshot', accelerator: 'CmdOrCtrl+V', click: () => send('paste') },
-      { label: 'Copy Highlighted Image', accelerator: 'CmdOrCtrl+C', click: () => send('copy') },
-      { label: 'Save PNG\u2026', accelerator: 'CmdOrCtrl+S', click: () => send('save') },
+      { label: 'Paste Screenshot', accelerator: 'CmdOrCtrl+V', registerAccelerator: isMac, click: () => send('paste') },
+      { label: 'Copy Highlighted Image', accelerator: 'CmdOrCtrl+C', registerAccelerator: isMac, click: () => send('copy') },
+      { label: 'Save PNG\u2026', accelerator: 'CmdOrCtrl+S', registerAccelerator: isMac, click: () => send('save') },
       { type: 'separator' },
-      { label: 'Undo', accelerator: 'CmdOrCtrl+Z', click: () => send('undo') },
-      { label: 'Redo', accelerator: 'Shift+CmdOrCtrl+Z', click: () => send('redo') }
+      { label: 'Undo', accelerator: 'CmdOrCtrl+Z', registerAccelerator: isMac, click: () => send('undo') },
+      { label: 'Redo', accelerator: 'Shift+CmdOrCtrl+Z', registerAccelerator: isMac, click: () => send('redo') }
     ]
   }
 

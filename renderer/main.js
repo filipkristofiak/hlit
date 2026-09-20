@@ -144,21 +144,44 @@ wrapEl.addEventListener('pointercancel', () => {
   if (dragging) cancelDrag()
 })
 
-// --- Keyboard: non-modifier shortcuts only ------------------------------
+// --- Keyboard: non-modifier shortcuts, plus renderer-owned Ctrl chords ---
+//
+// Ctrl+V/C/S/Z (and Ctrl+Shift+Z, Ctrl+R) are handled here on every
+// platform. Off macOS the Image menu only *displays* them
+// (registerAccelerator: false in main/menu.js): Chromium reserves a set of
+// Windows/Linux browser chords that a registered accelerator silently never
+// receives, which is why those menu items fired on click but not on the
+// keystroke. A DOM keydown always arrives, so the renderer is the one path.
+// On macOS the menu keeps the real Cmd accelerators and this block only ever
+// sees Ctrl, which macOS does not use for these commands.
+
+const CTRL_COMMANDS = { v: 'paste', c: 'copy', s: 'save', r: 'redo' }
+
+/** Command name for a Ctrl chord, or null. Keyed off `e.key`, so it follows
+ *  the active layout's letters, exactly like a menu accelerator would. */
+function ctrlCommand(e) {
+  const key = typeof e.key === 'string' ? e.key.toLowerCase() : ''
+  if (key === 'z') return e.shiftKey ? 'redo' : 'undo'
+  return e.shiftKey ? null : (CTRL_COMMANDS[key] || null)
+}
 
 window.addEventListener('keydown', (e) => {
-  if (e.ctrlKey && !e.metaKey && !e.altKey && (e.key === 'r' || e.key === 'R')) {
-    handleRedo()
-    e.preventDefault()
-    return
-  }
-
-  if (e.metaKey || e.ctrlKey || e.altKey) return
-
+  // A focused field keeps every native editing key, Ctrl+C/Ctrl+V included.
   if (e.target instanceof HTMLInputElement) {
     if (e.key === 'Escape') closeProfileEditor()
     return
   }
+
+  if (e.ctrlKey && !e.metaKey && !e.altKey) {
+    const name = ctrlCommand(e)
+    if (name) {
+      runCommand(name)
+      e.preventDefault()
+      return
+    }
+  }
+
+  if (e.metaKey || e.ctrlKey || e.altKey) return
 
   if (isProfileEditorOpen()) {
     if (e.key === 'Escape' || e.key === 'q' || e.key === 'Q') closeProfileEditor()
@@ -303,13 +326,22 @@ async function loadFromDisk() {
   statusbarRefresh()
 }
 
-window.hl.onCommand((name) => {
-  if (name === 'paste') handlePaste()
-  else if (name === 'copy') handleCopy()
-  else if (name === 'save') handleSave()
-  else if (name === 'undo') handleUndo()
-  else if (name === 'redo') handleRedo()
-})
+// One implementation per command, reached from the menu (IPC) or from the
+// Ctrl branch in the keydown handler above.
+const COMMANDS = {
+  paste: handlePaste,
+  copy: handleCopy,
+  save: handleSave,
+  undo: handleUndo,
+  redo: handleRedo
+}
+
+function runCommand(name) {
+  const fn = COMMANDS[name]
+  if (fn) fn()
+}
+
+window.hl.onCommand(runCommand)
 
 // --- Bootstrap -------------------------------------------------------------
 
