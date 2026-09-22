@@ -40,7 +40,7 @@ function build() {
   modeBtn = document.createElement('button')
   modeBtn.type = 'button'
   modeBtn.className = 'mode-btn'
-  modeBtn.title = 'Toggle light/dark (o)'
+  modeBtn.title = 'Toggle light/dark (i)'
   modeBtn.addEventListener('click', () => cmd.flipDirection())
   statusEl.appendChild(modeBtn)
 

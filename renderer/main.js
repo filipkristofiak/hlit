@@ -253,7 +253,7 @@ window.addEventListener('keydown', (e) => {
     return
   }
 
-  if (e.key === 'o' || e.key === 'O') {
+  if (e.key === 'i' || e.key === 'I') {
     cmd.flipDirection()
     return
   }

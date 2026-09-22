@@ -67,7 +67,7 @@ export at the currently active scale (WYSIWYG).
 | `p` | Open the profile picker |
 | `t` | Open the theme picker |
 | `r` / `⇧⌘R` | Open the resize popup |
-| `o` | Flip the active group between light and dark |
+| `i` | Flip the active group between light and dark |
 | `x` / `Delete` / `Backspace` | Delete the rectangle under the cursor |
 | `u` / `⌃R` | Undo / redo (`⌘Z` / `⇧⌘Z` also work) |
 | `q` / `Esc` | Close the open popup |
