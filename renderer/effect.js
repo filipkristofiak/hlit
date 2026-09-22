@@ -75,36 +75,42 @@ export function buildShiftTable(profiles, groups, out) {
  * three zero slots, so there is no per-pixel branch.
  * Copy-from-base (never in-place accumulate) keeps deletion and profile/
  * group changes correct without a full rebuild.
+ *
+ * `base`/`modeMap` are full-image, stride `w`. `out` is compact and
+ * origin-relative: exactly `dirty.w * dirty.h * 4` bytes, indexed as if
+ * `dirty.x`/`dirty.y` were (0, 0).
  */
 export function applyEffect(base, out, modeMap, w, shiftTable, dirty) {
   const dx0 = dirty.x
   const dy0 = dirty.y
-  const dx1 = dirty.x + dirty.w
-  const dy1 = dirty.y + dirty.h
+  const dx1 = dx0 + dirty.w
+  const dy1 = dy0 + dirty.h
 
   for (let y = dy0; y < dy1; y++) {
     const rowStart = y * w
+    const outRow = (y - dy0) * dirty.w
     for (let x = dx0; x < dx1; x++) {
       const idx = rowStart + x
-      const o = idx * 4
+      const i = idx * 4
+      const o = (outRow + (x - dx0)) * 4
       const s = modeMap[idx] * 3
 
-      let r = base[o] + shiftTable[s]
+      let r = base[i] + shiftTable[s]
       if (r < 0) r = 0
       else if (r > 255) r = 255
       out[o] = r
 
-      let g = base[o + 1] + shiftTable[s + 1]
+      let g = base[i + 1] + shiftTable[s + 1]
       if (g < 0) g = 0
       else if (g > 255) g = 255
       out[o + 1] = g
 
-      let b = base[o + 2] + shiftTable[s + 2]
+      let b = base[i + 2] + shiftTable[s + 2]
       if (b < 0) b = 0
       else if (b > 255) b = 255
       out[o + 2] = b
 
-      out[o + 3] = base[o + 3]
+      out[o + 3] = base[i + 3]
     }
   }
 }

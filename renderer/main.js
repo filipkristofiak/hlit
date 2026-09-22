@@ -1,14 +1,15 @@
 // Bootstrap + input wiring: pointer drag-to-highlight, keyboard shortcuts,
 // and menu commands delivered over the preload bridge.
 
-import { state, loadImage, applySettings, setThemeList, setThemeNotifier } from './state.js'
+import { state, loadImage, applySettings, setThemeList, setThemeNotifier, setSource } from './state.js'
 import * as cmd from './commands.js'
-import { fit, paint, toImage, drawOverlay, exportPng, setBitmapSize } from './view.js'
+import { fit, paint, toImage, drawOverlay, exportPng, rasterizeSource } from './view.js'
 import { init as initStatusbar, refresh as statusbarRefresh } from './statusbar.js'
 import { isProfileEditorOpen, closeProfileEditor } from './profile-editor.js'
 import { openProfilePicker, isProfilePickerOpen, handleProfilePickerKey, refreshProfilePicker } from './picker.js'
 import { openThemePicker, isThemePickerOpen, handleThemePickerKey, refreshThemePicker } from './theme-picker.js'
 import { openHelp, closeHelp, isHelpOpen } from './help.js'
+import { openResize, isResizeOpen, handleResizeKey, setResizeApplier } from './resize.js'
 import { keyLabels } from './keylabels.js'
 
 const wrapEl = document.getElementById('wrap')
@@ -162,12 +163,13 @@ const CTRL_COMMANDS = { v: 'paste', c: 'copy', s: 'save', r: 'redo' }
 function ctrlCommand(e) {
   const key = typeof e.key === 'string' ? e.key.toLowerCase() : ''
   if (key === 'z') return e.shiftKey ? 'redo' : 'undo'
+  if (key === 'r' && e.shiftKey) return 'resize'
   return e.shiftKey ? null : (CTRL_COMMANDS[key] || null)
 }
 
 window.addEventListener('keydown', (e) => {
   // A focused field keeps every native editing key, Ctrl+C/Ctrl+V included.
-  if (e.target instanceof HTMLInputElement) {
+  if (e.target instanceof HTMLInputElement && !isResizeOpen()) {
     if (e.key === 'Escape') closeProfileEditor()
     return
   }
@@ -205,8 +207,19 @@ window.addEventListener('keydown', (e) => {
     return
   }
 
+  if (isResizeOpen()) {
+    handleResizeKey(e.key)
+    e.preventDefault()
+    return
+  }
+
   if (e.key === 'p' || e.key === 'P') {
     openProfilePicker()
+    return
+  }
+
+  if (e.key === 'r' || e.key === 'R') {
+    handleResizeCommand()
     return
   }
 
@@ -263,22 +276,17 @@ async function handlePaste() {
     toast('Clipboard has no image')
     return
   }
-  const blob = new Blob([res.png], { type: 'image/png' })
-  const bitmap = await createImageBitmap(blob)
-  const off = document.createElement('canvas')
-  off.width = bitmap.width
-  off.height = bitmap.height
-  const octx = off.getContext('2d')
-  octx.drawImage(bitmap, 0, 0)
-  const imageData = octx.getImageData(0, 0, bitmap.width, bitmap.height)
+  const bitmap = await createImageBitmap(new Blob([res.png], { type: 'image/png' }))
+  const imageData = rasterizeSource(bitmap, bitmap.width, bitmap.height)
+  setSource(res.png, bitmap.width, bitmap.height)
+  bitmap.close()
 
   const dirty = loadImage(imageData)
-  setBitmapSize(bitmap.width, bitmap.height)
   fit()
   paint(dirty)
   hintEl.style.display = 'none'
   statusbarRefresh()
-  toast(`Pasted ${bitmap.width}\u00d7${bitmap.height}`)
+  toast(`Pasted ${state.imageW}\u00d7${state.imageH}`)
 }
 
 async function handleCopy() {
@@ -315,6 +323,14 @@ function handleRedo() {
   cmd.redo()
 }
 
+function handleResizeCommand() {
+  if (!hasImage()) {
+    toast('Nothing to resize')
+    return
+  }
+  openResize()
+}
+
 async function loadFromDisk() {
   if (!window.hl) return
   const [themesRes, settingsRes] = await Promise.all([
@@ -333,7 +349,8 @@ const COMMANDS = {
   copy: handleCopy,
   save: handleSave,
   undo: handleUndo,
-  redo: handleRedo
+  redo: handleRedo,
+  resize: handleResizeCommand
 }
 
 function runCommand(name) {
@@ -353,6 +370,11 @@ cmd.setRenderHooks({
     refreshThemePicker()
   },
   hoverProbe: () => findTopmostRectAt(lastPointer.x, lastPointer.y)
+})
+setResizeApplier(async (frac) => {
+  const result = await cmd.setImageScale(frac)
+  if (result === 'noop') return
+  toast(result ? `Resized to ${state.imageW}\u00d7${state.imageH}` : 'Resize failed')
 })
 hintEl.textContent = keyLabels(window.hl && window.hl.platform).hint
 initStatusbar()
