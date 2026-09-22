@@ -2,7 +2,7 @@
 // commands own the mutate -> repaint -> refresh sequence so no call site repeats it.
 
 import * as doc from './state.js'
-import { paint, drawOverlay } from './view.js'
+import { paint, drawOverlay, fit, rasterizeSource } from './view.js'
 import { GROUP_COUNT } from './effect.js'
 
 let refreshStatusbar = () => {}
@@ -105,4 +105,29 @@ export function resetProfile(profileIndex) {
 /** Theme picker row: the document adopts that theme's palette. */
 export function chooseTheme(id) {
   render(doc.applyTheme(id), false)
+}
+
+/** Re-decodes the retained clipboard PNG at `scale` and rebuilds every
+ * resolution-dependent buffer. Returns `'noop'` when there is no source or
+ * the scale is already active, `false` when the decode fails, `true` on
+ * success — the two failure-shaped returns are kept apart so a caller can
+ * skip toasting when the user just re-applied the current scale. */
+export async function setImageScale(scale) {
+  const src = doc.state.source
+  if (!src) return 'noop'
+  const w = Math.max(1, Math.round(src.w * scale))
+  const h = Math.max(1, Math.round(src.h * scale))
+  if (w === doc.state.imageW && h === doc.state.imageH) return 'noop'
+  let bitmap
+  try {
+    bitmap = await createImageBitmap(new Blob([src.png], { type: 'image/png' }))
+  } catch {
+    return false                 // nothing mutated yet: the document is untouched
+  }
+  const imageData = rasterizeSource(bitmap, w, h)
+  bitmap.close()
+  doc.resizeTo(imageData, scale)
+  fit()
+  render({ x: 0, y: 0, w, h }, true)
+  return true
 }

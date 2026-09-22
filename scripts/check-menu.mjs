@@ -14,7 +14,7 @@ function acceleratedImageItems(platform) {
 
 for (const platform of ['win32', 'linux']) {
   const items = acceleratedImageItems(platform)
-  assert.strictEqual(items.length, 5, `${platform}: expected 5 accelerated Image items`)
+  assert.strictEqual(items.length, 6, `${platform}: expected 6 accelerated Image items`)
   for (const item of items) {
     assert.strictEqual(item.registerAccelerator, false,
       `${platform}: "${item.label}" still registers ${item.accelerator}; the renderer owns that chord`)

@@ -20,6 +20,7 @@ function buildMenuTemplate (platform, send) {
       { label: 'Paste Screenshot', accelerator: 'CmdOrCtrl+V', registerAccelerator: isMac, click: () => send('paste') },
       { label: 'Copy Highlighted Image', accelerator: 'CmdOrCtrl+C', registerAccelerator: isMac, click: () => send('copy') },
       { label: 'Save PNG\u2026', accelerator: 'CmdOrCtrl+S', registerAccelerator: isMac, click: () => send('save') },
+      { label: 'Resize Image\u2026', accelerator: 'Shift+CmdOrCtrl+R', registerAccelerator: isMac, click: () => send('resize') },
       { type: 'separator' },
       { label: 'Undo', accelerator: 'CmdOrCtrl+Z', registerAccelerator: isMac, click: () => send('undo') },
       { label: 'Redo', accelerator: 'Shift+CmdOrCtrl+Z', registerAccelerator: isMac, click: () => send('redo') }

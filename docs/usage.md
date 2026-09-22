@@ -43,6 +43,21 @@ for both sides, a "Mirror dark side" checkbox, *Reset*, and *Close*.
   selection (or closes an in-progress drag / any open popup first, if
   either is active).
 
+## Resize
+
+Press `r` (or *Image → Resize Image…*, `⇧⌘R` / `Ctrl+Shift+R`) to open the
+resize popup. It re-decodes the pasted screenshot from the clipboard bytes
+hlit retains in memory, so every scale — including going back to 100% — is
+reached at full fidelity; there's no cumulative blur from repeated resizes.
+
+Drag the slider or use the anchors (`1`–`6` for 100/75/66.7/50/33.3/25%,
+magnetic within 2 points) and press `Enter` to apply, or `q`/`Esc` to cancel.
+Applying rescales every rectangle to match — highlights stay on the same
+image features — and updates the status bar with the new dimensions and
+scale (e.g. `1920×1080 · 2 rects · 50%`; the scale suffix is omitted at
+100%). Undo/redo history survives a resize. `Cmd/Ctrl+C` and `Cmd/Ctrl+S`
+export at the currently active scale (WYSIWYG).
+
 ## Shortcuts
 
 | Key | Action |
@@ -51,6 +66,7 @@ for both sides, a "Mirror dark side" checkbox, *Reset*, and *Close*.
 | `Tab` / `⇧Tab` | Next / previous active group |
 | `p` | Open the profile picker |
 | `t` | Open the theme picker |
+| `r` / `⇧⌘R` | Open the resize popup |
 | `o` | Flip the active group between light and dark |
 | `x` / `Delete` / `Backspace` | Delete the rectangle under the cursor |
 | `u` / `⌃R` | Undo / redo (`⌘Z` / `⇧⌘Z` also work) |
@@ -58,14 +74,17 @@ for both sides, a "Mirror dark side" checkbox, *Reset*, and *Close*.
 | `Esc` | Cancel an in-progress drag, or clear the selection |
 | `?` | Toggle the help overlay |
 | `⌘V` / `⌘C` / `⌘S` | Paste screenshot / copy result / save PNG |
+| in the resize popup: `1`–`6` | Snap to an anchor (100/75/66.7/50/33.3/25%) |
+| in the resize popup: `←` `→` / `h` `l` | Adjust the scale by 1 point |
+| in the resize popup: `Enter` | Apply the chosen scale |
 | in pickers: `h j k l`, arrows | Move the cursor |
 | in pickers: `g` / `G` | Jump to the first / last entry |
 | in pickers: `Enter`, digits | Apply the highlighted entry / take one directly |
 | in the profile picker: `E` / shift-click | Edit that profile's vectors |
 
 On Windows/Linux the modifier is spelled `Ctrl` (`Ctrl+V` / `Ctrl+C` /
-`Ctrl+S`, `Ctrl+Z` / `Ctrl+Shift+Z`) and View ▸ Reload is `F5`, so `Ctrl+R`
-is redo on every platform.
+`Ctrl+S`, `Ctrl+Z` / `Ctrl+Shift+Z`, `Ctrl+Shift+R` for resize) and View ▸
+Reload is `F5`, so `Ctrl+R` is redo on every platform.
 
 ## Config files
 

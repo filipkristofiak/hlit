@@ -5,7 +5,7 @@ import assert from 'node:assert'
 import { GROUP_COUNT, PROFILE_COUNT, buildShiftTable, stampModeMap, applyEffect } from '../renderer/effect.js'
 import {
   state, addRect, deleteAt, setGroupProfile, setGroupSign, setGroupBinding, setProfileChannel, setProfileLinked, resetProfile,
-  undo, redo, selectOnly, toggleSelect, clearSelection, assignSelectedGroup, setThemeList, applyTheme
+  undo, redo, selectOnly, toggleSelect, clearSelection, assignSelectedGroup, setThemeList, applyTheme, resizeTo, setSource
 } from '../renderer/state.js'
 
 const W = 8
@@ -159,7 +159,18 @@ const sModeMap = new Uint8Array(W * H)
 
 function sRepaint(dirty) {
   stampModeMap(sModeMap, W, state.rects, dirty)
-  applyEffect(sBase, sOut, sModeMap, W, state.shiftTable, dirty)
+  const scratch = new Uint8ClampedArray(dirty.w * dirty.h * 4)
+  applyEffect(sBase, scratch, sModeMap, W, state.shiftTable, dirty)
+  for (let y = 0; y < dirty.h; y++) {
+    for (let x = 0; x < dirty.w; x++) {
+      const s = (y * dirty.w + x) * 4
+      const d = ((dirty.y + y) * W + (dirty.x + x)) * 4
+      sOut[d] = scratch[s]
+      sOut[d + 1] = scratch[s + 1]
+      sOut[d + 2] = scratch[s + 2]
+      sOut[d + 3] = scratch[s + 3]
+    }
+  }
 }
 
 state.imageW = W
@@ -424,3 +435,57 @@ assert.ok(saved.every((s) => s.theme.locked === false), 'every written theme is 
 delete globalThis.hl
 
 console.log('themes: OK')
+
+// --- Resize keeps rect geometry drift-free ----------------------------------
+
+setSource(new Uint8Array(0), W, H)
+state.rects = []
+state.undo = []
+state.redo = []
+addRect({ x: 2, y: 0, w: 4, h: 2, group: 0 })
+const roundTripRect = state.rects[0]
+const before = { x: roundTripRect.x, y: roundTripRect.y, w: roundTripRect.w, h: roundTripRect.h }
+
+resizeTo({ width: W / 2, height: H / 2 }, 0.5)
+assert.deepStrictEqual(
+  { x: roundTripRect.x, y: roundTripRect.y, w: roundTripRect.w, h: roundTripRect.h },
+  { x: 1, y: 0, w: 2, h: 1 },
+  'resizing to 50% halves rect geometry'
+)
+assert.strictEqual(state.imageW, W / 2, 'resizeTo installs the new document width')
+assert.strictEqual(state.modeMap.length, (W / 2) * (H / 2), 'resizeTo rebuilds modeMap at the new size')
+
+resizeTo({ width: W, height: H }, 1)
+assert.deepStrictEqual(
+  { x: roundTripRect.x, y: roundTripRect.y, w: roundTripRect.w, h: roundTripRect.h },
+  before,
+  'scaling back to 100% restores the exact original geometry (no rounding drift)'
+)
+
+// A rect that lives only in the undo stack (deleted, not in state.rects) is
+// still rescaled by resizeTo, so undoing after a resize reinstates it at the
+// correct geometry rather than stale pre-resize coordinates.
+state.rects = []
+state.undo = []
+state.redo = []
+addRect({ x: 0, y: 2, w: 4, h: 2, group: 1 })
+const deletedRect = state.rects[0]
+deleteAt(0, 2)
+assert.strictEqual(state.rects.length, 0, 'the rect is removed from state.rects after delete')
+
+resizeTo({ width: W / 2, height: H / 2 }, 0.5)
+assert.deepStrictEqual(
+  { x: deletedRect.x, y: deletedRect.y, w: deletedRect.w, h: deletedRect.h },
+  { x: 0, y: 1, w: 2, h: 1 },
+  'resizeTo rescales a rect that only lives in the undo stack'
+)
+
+const undoDeleteDirty = undo()
+assert.ok(undoDeleteDirty, 'undo must restore the deleted rect')
+assert.deepStrictEqual(
+  { x: state.rects[0].x, y: state.rects[0].y, w: state.rects[0].w, h: state.rects[0].h },
+  { x: 0, y: 1, w: 2, h: 1 },
+  'undo reinstates the rect at its already-rescaled geometry, not stale pre-resize coordinates'
+)
+
+console.log('resize: OK')

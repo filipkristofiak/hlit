@@ -24,6 +24,7 @@ const SHORTCUTS = [
   ['in picker: Enter', 'Apply the highlighted cell'],
   ['in picker: E / shift-click', 'Edit that profile\u2019s vectors'],
   ['T', 'Open the theme picker'],
+  ['R / ' + K.resize, 'Resize the image'],
   ['in themes: 1 \u2013 9', 'Load that theme directly'],
   ['in themes: j k \u2191 \u2193', 'Move between themes'],
   ['in themes: g / G', 'First / last theme'],

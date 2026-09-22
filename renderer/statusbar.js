@@ -67,7 +67,8 @@ export function refresh() {
   modeBtn.classList.toggle('dark', state.groups[state.active].sign === -1)
 
   const selSuffix = state.selected.size ? ` \u00b7 ${state.selected.size} selected` : ''
+  const scaleSuffix = state.scale !== 1 ? ` \u00b7 ${Math.round(state.scale * 1000) / 10}%` : ''
   info.textContent = state.imageW && state.imageH
-    ? `${state.imageW}\u00d7${state.imageH} \u00b7 ${state.rects.length} rects${selSuffix}`
+    ? `${state.imageW}\u00d7${state.imageH} \u00b7 ${state.rects.length} rects${scaleSuffix}${selSuffix}`
     : ''
 }

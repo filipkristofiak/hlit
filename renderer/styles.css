@@ -415,3 +415,28 @@ body {
   color: #8a8a8a;
   line-height: 1.4;
 }
+
+.resize-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 15;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+}
+
+.rz-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.rz-slider {
+  flex: 1;
+  min-width: 240px;
+}
+
+.rz-readout {
+  color: #e6e6e6;
+  font-variant-numeric: tabular-nums;
+}

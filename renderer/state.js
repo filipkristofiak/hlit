@@ -36,7 +36,6 @@ export const state = {
   imageW: 0,
   imageH: 0,
   base: null,   // ImageData
-  out: null,    // ImageData
   modeMap: null, // Uint8Array(w*h)
   rects: [],
   selected: new Set(), // Set<rect>, currently selected for bulk group reassignment
@@ -51,7 +50,11 @@ export const state = {
   // buttons); it follows the most recently selected rect.
   active: 0,
   undo: [],
-  redo: []
+  redo: [],
+  // The pristine clipboard bytes every resize re-decodes from, and the scale
+  // (fraction of source.w/h) currently loaded into base/modeMap.
+  source: null, // { png: Uint8Array, w: number, h: number }
+  scale: 1
 }
 
 function rectContains(r, x, y) {
@@ -105,6 +108,12 @@ let notify = () => {}
  * (theme forks, unreadable theme files). */
 export function setThemeNotifier(cb) {
   notify = cb
+}
+
+/** The pristine clipboard bytes every resize re-decodes from. Resets scale to 1. */
+export function setSource(png, w, h) {
+  state.source = { png, w, h }
+  state.scale = 1
 }
 
 export function setThemeList(rawThemes) {
@@ -262,7 +271,6 @@ export function loadImage(imageData) {
   state.imageW = imageData.width
   state.imageH = imageData.height
   state.base = imageData
-  state.out = new ImageData(new Uint8ClampedArray(imageData.data), imageData.width, imageData.height)
   state.modeMap = new Uint8Array(imageData.width * imageData.height)
   state.rects = []
   state.selected = new Set()
@@ -273,6 +281,11 @@ export function loadImage(imageData) {
 }
 
 export function addRect(rect) {
+  const k = state.scale
+  rect.sx = Math.round(rect.x / k)
+  rect.sy = Math.round(rect.y / k)
+  rect.sw = Math.max(1, Math.round(rect.w / k))
+  rect.sh = Math.max(1, Math.round(rect.h / k))
   state.rects.push(rect)
   pushUndo({ t: 'add', rect })
   return rectBBox(rect)
@@ -374,6 +387,34 @@ export function resetProfile(profileIndex) {
   syncShiftTable()
   saveActiveTheme()
   return unionBBox(rectsUsingProfile(profileIndex))
+}
+
+function allRectObjects() {
+  const seen = new Set(state.rects)
+  for (const stack of [state.undo, state.redo]) {
+    for (const op of stack) {
+      if (op.rect) seen.add(op.rect)
+      if (op.entries) for (const e of op.entries) seen.add(e.rect)
+    }
+  }
+  return seen
+}
+
+/** Installs re-decoded pixels at `scale` and re-derives every rect from its
+ *  source-space coords, so repeated resizes never accumulate rounding drift.
+ *  Rects, selection and history are preserved. */
+export function resizeTo(imageData, scale) {
+  state.imageW = imageData.width
+  state.imageH = imageData.height
+  state.base = imageData
+  state.modeMap = new Uint8Array(imageData.width * imageData.height)
+  state.scale = scale
+  for (const r of allRectObjects()) {
+    r.x = Math.min(Math.round(r.sx * scale), state.imageW - 1)
+    r.y = Math.min(Math.round(r.sy * scale), state.imageH - 1)
+    r.w = Math.max(1, Math.min(Math.round(r.sw * scale), state.imageW - r.x))
+    r.h = Math.max(1, Math.min(Math.round(r.sh * scale), state.imageH - r.y))
+  }
 }
 
 function undoOp(op) {
