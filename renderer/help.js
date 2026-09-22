@@ -13,7 +13,7 @@ const SHORTCUTS = [
   [K.addToSelection, 'Select a rectangle / add to the selection'],
   ['1 \u2013 5', 'Move the selection to that group, or make it active'],
   [K.cycleGroup, 'Next / previous active group'],
-  ['O', 'Flip the active group between light and dark'],
+  ['I', 'Flip the active group between light and dark'],
   ['x / Delete', 'Remove the rectangle under the cursor'],
   ['Esc', 'Clear the selection, or cancel a drag'],
   ['P', 'Open the profile picker'],
