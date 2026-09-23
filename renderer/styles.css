@@ -77,6 +77,11 @@ body {
   border-color: #e6e6e6;
 }
 
+.mode-btn.annot {
+  border-style: solid;
+  border-color: #e6e6e6;
+}
+
 .mode-btn:disabled {
   cursor: default;
 }
@@ -111,6 +116,21 @@ body {
 
 #overlay {
   pointer-events: none;
+}
+
+.text-editor {
+  position: absolute;
+  margin: 0;
+  padding: 0;
+  border: none;
+  outline: 1px dashed rgba(255, 255, 255, .7);
+  background: transparent;
+  font-family: inherit;
+  resize: none;
+  overflow: hidden;
+  white-space: pre-wrap;
+  user-select: text;
+  z-index: 5;
 }
 
 #hint {

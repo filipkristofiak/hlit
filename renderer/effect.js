@@ -2,7 +2,9 @@
 
 export const GROUP_COUNT = 5          // colour groups; modeMap codes 1..GROUP_COUNT
 export const MASK_GROUP = 5           // the 6th group: every rect in it is masked
-export const GROUP_TOTAL = 6          // GROUP_COUNT + 1; sizes the status bar and the Tab cycle
+export const DRAW_GROUP = 6           // vector: outline rectangle or arrow, drawn after the pixel pass
+export const ANNOT_GROUP = 7          // vector: text box ("A" — annotate), drawn after the pixel pass
+export const GROUP_TOTAL = 8          // sizes the status bar and the Tab cycle
 export const PROFILE_COUNT = 5
 export const DEFAULT_SHIFT = { r: 0, g: 0, b: -160 }
 
@@ -16,10 +18,18 @@ export const MASK_PIXEL_BLOCK = 12   // mosaic cell edge, image pixels
 // (0 = none, 1..GROUP_COUNT = rect.group + 1), the remaining 13 bits hold the
 // mask slot (0 = not masked, otherwise the mask rect's index + 1). A pixel can
 // carry both: the mask pixel is synthesised first, then the highlight's shift
-// is applied on top of it.
+// is applied on top of it. DRAW_GROUP/ANNOT_GROUP rects never reach this map
+// (see stampModeMap): codes only ever run 0..MASK_GROUP + 1 = 0..6, which is
+// why 3 bits is enough even though GROUP_TOTAL is 8.
 export const GROUP_CODE_BITS = 3
-export const GROUP_CODE_MASK = (1 << GROUP_CODE_BITS) - 1        // 7; holds codes 0..GROUP_TOTAL
+export const GROUP_CODE_MASK = (1 << GROUP_CODE_BITS) - 1        // 7; holds codes 0..MASK_GROUP + 1
 export const MASK_SLOT_LIMIT = (1 << (16 - GROUP_CODE_BITS)) - 1 // 8191 slots -> rect indices 0..8190
+
+/** Colour groups own a `state.groups` binding; nothing else does. */
+export function isColorGroup(g) { return g >= 0 && g < GROUP_COUNT }
+/** D and A are drawn with canvas vectors after the pixel pass, never stamped
+ *  into modeMap — see the isVectorGroup guard in stampModeMap below. */
+export function isVectorGroup(g) { return g === DRAW_GROUP || g === ANNOT_GROUP }
 
 // Per-rect colour-statistics sampling. Module-private: tuned for the mask
 // kernel only, never exposed past maskStatsFor/buildMaskEntries.
@@ -74,6 +84,10 @@ export function stampModeMap(modeMap, w, rects, dirty) {
   for (let pass = 0; pass < 2; pass++) {
     for (let i = 0; i < rects.length; i++) {
       const r = rects[i]
+      // D/A rects carry no pixels: they are drawn as canvas vectors after the
+      // effect pass. Stamping one would write code r.group + 1 = 7 or 8; 8
+      // overflows GROUP_CODE_BITS straight into the mask-slot field.
+      if (isVectorGroup(r.group)) continue
       // Past MASK_SLOT_LIMIT an M rect falls through to the highlight path with
       // code MASK_GROUP + 1, which reads past the end of shiftTable and renders
       // black — fail-closed, never the source pixels.

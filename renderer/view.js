@@ -2,6 +2,7 @@
 
 import { state } from './state.js'
 import { stampModeMap, applyEffect, buildMaskEntries } from './effect.js'
+import { drawAnnotations } from './annotations.js'
 
 const stageEl = document.getElementById('stage')
 const wrapEl = document.getElementById('wrap')
@@ -72,6 +73,12 @@ export function fit() {
   drawOverlay(lastOverlayRect)
 }
 
+/** CSS px per image px, as last computed by fit(). The inline text editor
+ *  uses this to position itself and size its font. */
+export function viewScale() {
+  return scale
+}
+
 function scratchFor(w, h) {
   if (!scratch || scratch.width !== w || scratch.height !== h) scratch = new ImageData(w, h)
   return scratch
@@ -85,6 +92,7 @@ export function paint(dirty) {
   const buf = scratchFor(dirty.w, dirty.h)
   applyEffect(state.base.data, buf.data, state.modeMap, state.imageW, state.shiftTable, dirty, masks)
   baseCtx.putImageData(buf, dirty.x, dirty.y)
+  drawAnnotations(baseCtx, state.rects, dirty, state.scale)
 }
 
 /** Maps a client-space pointer position to a clamped image-space pixel. */

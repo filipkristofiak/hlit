@@ -3,7 +3,7 @@
 
 import * as doc from './state.js'
 import { paint, drawOverlay, fit, rasterizeSource } from './view.js'
-import { GROUP_TOTAL } from './effect.js'
+import { GROUP_TOTAL, isVectorGroup } from './effect.js'
 
 let refreshStatusbar = () => {}
 let hoverProbe = () => null
@@ -26,6 +26,11 @@ function render(dirty, redrawOverlay) {
  * just becomes active. Either way `state.active` ends up on `groupIndex`.
  */
 export function chooseGroup(groupIndex) {
+  if (isVectorGroup(groupIndex)) {
+    doc.setActive(groupIndex)
+    render(null, false)
+    return
+  }
   if (doc.state.selected.size > 0) {
     render(doc.assignSelectedGroup(groupIndex), false)
     return
@@ -47,6 +52,18 @@ export function flipDirection() {
 /** Mask menu cell: the M group adopts that style. */
 export function chooseMask(style) {
   render(doc.setMaskStyle(style), false)
+}
+
+/** Draw picker cell: shape + colour for the next drawn shape. */
+export function chooseDrawStyle(shape, colorIndex) {
+  doc.setDrawStyle(shape, colorIndex)
+  render(null, false)
+}
+
+/** Text picker cell: colour for the next text box. */
+export function chooseTextColor(colorIndex) {
+  doc.setTextColor(colorIndex)
+  render(null, false)
 }
 
 /** Picker cell: the active group adopts that profile in that direction. */
@@ -77,6 +94,22 @@ export function dismissSelection() {
 
 export function commitRect(rect) {
   render(doc.addRect(rect), false)
+}
+
+/** Commits a freshly drawn A rect once its editor produced a non-empty string. */
+export function commitTextRect(rect, text) {
+  rect.text = text
+  render(doc.addRect(rect), false)
+}
+
+/** Commits an edit to an existing A rect. */
+export function editRectText(rect, text) {
+  render(doc.setRectText(rect, text), false)
+}
+
+/** Deletes one rect by reference (an emptied text box). */
+export function deleteRect(rect) {
+  render(doc.deleteRectRef(rect), true)
 }
 
 /** Returns false when no rect sat under the cursor, so the caller can toast. */

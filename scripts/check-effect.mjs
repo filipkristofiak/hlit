@@ -2,12 +2,13 @@
 // Plain node:assert; throws (non-zero exit) on failure.
 
 import assert from 'node:assert'
-import { GROUP_COUNT, PROFILE_COUNT, MASK_NOISE, MASK_PIXELATE, MASK_LIGHT, MASK_DARK, MASK_PIXEL_BLOCK, GROUP_CODE_BITS, GROUP_CODE_MASK, MASK_GROUP, buildShiftTable, stampModeMap, buildMaskEntries, applyEffect } from '../renderer/effect.js'
+import { GROUP_COUNT, PROFILE_COUNT, MASK_NOISE, MASK_PIXELATE, MASK_LIGHT, MASK_DARK, MASK_PIXEL_BLOCK, GROUP_CODE_BITS, GROUP_CODE_MASK, MASK_GROUP, DRAW_GROUP, ANNOT_GROUP, buildShiftTable, stampModeMap, buildMaskEntries, applyEffect } from '../renderer/effect.js'
 import {
   state, addRect, deleteAt, setGroupProfile, setGroupSign, setGroupBinding, setMaskStyle, toggleActiveSign, setProfileChannel,
   setProfileLinked, resetProfile, undo, redo, selectOnly, toggleSelect, clearSelection, assignSelectedGroup, setThemeList,
-  applyTheme, applySettings, resizeTo, setSource
+  applyTheme, applySettings, resizeTo, setSource, setRectText, setDrawStyle, setTextColor
 } from '../renderer/state.js'
+import { annotationPad, arrowPoints, wrapLines } from '../renderer/annotations.js'
 
 const W = 8
 const H = 4
@@ -819,3 +820,144 @@ assert.deepStrictEqual(
 )
 
 console.log('resize: OK')
+
+// --- D/A vector groups: kernel guard, geometry helpers, state wiring --------
+
+assert.ok(MASK_GROUP + 1 <= GROUP_CODE_MASK, 'GROUP_CODE_MASK holds every highlight code up to MASK_GROUP + 1')
+
+const vecModeMap = new Uint16Array(W * H)
+const vecRects = [
+  { x: 0, y: 0, w: 2, h: 2, group: DRAW_GROUP },
+  { x: 0, y: 0, w: 2, h: 2, group: ANNOT_GROUP }
+]
+stampModeMap(vecModeMap, W, vecRects, FULL)
+for (let i = 0; i < 4; i++) {
+  assert.strictEqual(vecModeMap[i], 0, 'D/A rects are never stamped into modeMap')
+}
+
+const vecWithColorModeMap = new Uint16Array(W * H)
+const vecWithColorRects = [...vecRects, { x: 0, y: 0, w: 2, h: 2, group: 3 }]
+stampModeMap(vecWithColorModeMap, W, vecWithColorRects, FULL)
+assert.strictEqual(vecWithColorModeMap[0], 4, 'a colour rect stamped alongside D/A rects still gets its own code (group + 1)')
+assert.strictEqual(vecWithColorModeMap[0] >> GROUP_CODE_BITS, 0, 'no bleed into the mask-slot bits')
+
+console.log('vector group kernel guard: OK')
+
+assert.deepStrictEqual(
+  arrowPoints({ x: 10, y: 20, w: 30, h: 40, flipX: false, flipY: false }),
+  { x0: 10, y0: 20, x1: 40, y1: 60 },
+  'arrowPoints: no flip runs tail top-left to tip bottom-right'
+)
+assert.deepStrictEqual(
+  arrowPoints({ x: 10, y: 20, w: 30, h: 40, flipX: true, flipY: false }),
+  { x0: 40, y0: 20, x1: 10, y1: 60 },
+  'arrowPoints: flipX swaps the x tail/tip'
+)
+assert.deepStrictEqual(
+  arrowPoints({ x: 10, y: 20, w: 30, h: 40, flipX: true, flipY: true }),
+  { x0: 40, y0: 60, x1: 10, y1: 20 },
+  'arrowPoints: both flips put the tail at the bottom-right corner'
+)
+
+console.log('arrowPoints: OK')
+
+const stubCtx = { measureText: (s) => ({ width: s.length }) }
+assert.deepStrictEqual(wrapLines(stubCtx, 'aaa bbb', 4), ['aaa', 'bbb'], 'wrapLines greedily wraps on word boundaries')
+assert.deepStrictEqual(wrapLines(stubCtx, 'aaaaaa', 3), ['aaaaaa'], 'wrapLines never breaks mid-word')
+assert.deepStrictEqual(wrapLines(stubCtx, 'a\nb', 10), ['a', 'b'], 'wrapLines splits on explicit newlines first')
+
+console.log('wrapLines: OK')
+
+state.imageW = W
+state.imageH = H
+state.scale = 1
+state.rects = []
+state.undo = []
+state.redo = []
+state.selected = new Set()
+
+const drawRect = { x: 1, y: 1, w: 2, h: 2, group: DRAW_GROUP, shape: 'rect', color: 0 }
+const drawDirty = addRect(drawRect)
+const pad = annotationPad(state.scale)
+const expectedX = Math.max(0, drawRect.x - pad)
+const expectedY = Math.max(0, drawRect.y - pad)
+const expectedW = Math.min(state.imageW, drawRect.x + drawRect.w + pad) - expectedX
+const expectedH = Math.min(state.imageH, drawRect.y + drawRect.h + pad) - expectedY
+assert.deepStrictEqual(
+  drawDirty,
+  { x: expectedX, y: expectedY, w: expectedW, h: expectedH },
+  'addRect on a D rect returns a bbox inflated by annotationPad(state.scale) and clamped to the image'
+)
+assert.ok(drawDirty.x >= 0 && drawDirty.y >= 0, 'the dirty bbox never has a negative origin')
+assert.ok(drawDirty.x + drawDirty.w <= state.imageW && drawDirty.y + drawDirty.h <= state.imageH, 'the dirty bbox never exceeds the image bounds')
+
+console.log('addRect vector dirty bbox: OK')
+
+const textRect = { x: 0, y: 0, w: 3, h: 2, group: ANNOT_GROUP, text: '', color: 0 }
+addRect(textRect)
+const setTextDirty = setRectText(textRect, 'hi')
+assert.ok(setTextDirty, 'setRectText returns a dirty bbox')
+assert.strictEqual(textRect.text, 'hi', 'setRectText updates rect.text')
+assert.strictEqual(setRectText(textRect, 'hi'), null, 'setting the same text is a no-op')
+
+const undoText = undo()
+assert.ok(undoText, 'undo must return a dirty bbox for a text edit')
+assert.strictEqual(textRect.text, '', 'undo restores the previous text')
+
+const redoText = redo()
+assert.ok(redoText, 'redo must return a dirty bbox for a text edit')
+assert.strictEqual(textRect.text, 'hi', 'redo reapplies the text edit')
+
+console.log('setRectText / undo redo: OK')
+
+const colourRect = { x: 4, y: 0, w: 1, h: 1, group: 0 }
+addRect(colourRect)
+selectOnly(colourRect)
+const assignVecResult = assignSelectedGroup(DRAW_GROUP)
+assert.strictEqual(assignVecResult, null, 'assignSelectedGroup into a vector group never reassigns a colour rect')
+assert.strictEqual(colourRect.group, 0, 'the colour rect keeps its original group')
+assert.strictEqual(state.active, DRAW_GROUP, 'assignSelectedGroup still moves the active group to the vector group')
+clearSelection()
+
+console.log('assignSelectedGroup vector guard: OK')
+
+state.active = DRAW_GROUP
+const groupsBeforeDraw = JSON.stringify(state.groups)
+assert.strictEqual(toggleActiveSign(), null, 'toggleActiveSign on D is a no-op')
+assert.strictEqual(JSON.stringify(state.groups), groupsBeforeDraw, 'toggleActiveSign on D leaves state.groups untouched')
+
+state.active = ANNOT_GROUP
+const groupsBeforeAnnot = JSON.stringify(state.groups)
+assert.strictEqual(toggleActiveSign(), null, 'toggleActiveSign on A is a no-op')
+assert.strictEqual(JSON.stringify(state.groups), groupsBeforeAnnot, 'toggleActiveSign on A leaves state.groups untouched')
+
+console.log('toggleActiveSign vector guard: OK')
+
+setDrawStyle('arrow', 3)
+assert.strictEqual(state.drawShape, 'arrow', 'setDrawStyle updates drawShape')
+assert.strictEqual(state.drawColor, 3, 'setDrawStyle updates drawColor')
+setTextColor(2)
+assert.strictEqual(state.textColor, 2, 'setTextColor updates textColor')
+
+const V5_GROUPS = [
+  { profile: 0, sign: 1 },
+  { profile: 1, sign: 1 },
+  { profile: 2, sign: -1 },
+  { profile: 3, sign: 1 },
+  { profile: 4, sign: -1 }
+]
+
+await applySettings({ version: 5, theme: 'default', groups: V5_GROUPS, maskStyle: MASK_NOISE, drawShape: 'arrow', drawColor: 3, textColor: 2 })
+assert.strictEqual(state.drawShape, 'arrow', 'applySettings loads drawShape from a v5 file')
+assert.strictEqual(state.drawColor, 3, 'applySettings loads drawColor from a v5 file')
+assert.strictEqual(state.textColor, 2, 'applySettings loads textColor from a v5 file')
+
+await applySettings({ version: 5, theme: 'default', groups: V5_GROUPS, maskStyle: MASK_NOISE, drawShape: 'blob', drawColor: 9, textColor: -1 })
+assert.strictEqual(state.drawShape, 'rect', 'an invalid drawShape falls back to rect')
+assert.strictEqual(state.drawColor, 0, 'an out-of-range drawColor falls back to 0')
+assert.strictEqual(state.textColor, 0, 'an out-of-range textColor falls back to 0')
+
+await applySettings({ version: 4, theme: 'cool', groups: V5_GROUPS, maskStyle: MASK_NOISE })
+assert.strictEqual(state.theme.id, 'cool', 'a v4 theme pointer still resolves after the version bump to 5')
+
+console.log('applySettings drawShape/drawColor/textColor: OK')

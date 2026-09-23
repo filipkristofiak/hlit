@@ -3,10 +3,12 @@
 import { state } from './state.js'
 import * as cmd from './commands.js'
 import { openProfilePicker } from './picker.js'
-import { GROUP_TOTAL, MASK_GROUP } from './effect.js'
-import { bindingColor, maskColor } from './colors.js'
+import { GROUP_TOTAL, MASK_GROUP, DRAW_GROUP, ANNOT_GROUP, isColorGroup, isVectorGroup } from './effect.js'
+import { bindingColor, maskColor, annotColor } from './colors.js'
 
 const statusEl = document.getElementById('status')
+
+const GROUP_LABELS = { [MASK_GROUP]: 'M', [DRAW_GROUP]: 'D', [ANNOT_GROUP]: 'A' }
 
 let buttons = []
 let modeBtn = null
@@ -14,6 +16,8 @@ let info = null
 
 function groupColor(groupIndex) {
   if (groupIndex === MASK_GROUP) return maskColor(state.maskStyle)
+  if (groupIndex === DRAW_GROUP) return annotColor(state.drawColor)
+  if (groupIndex === ANNOT_GROUP) return annotColor(state.textColor)
   const g = state.groups[groupIndex]
   return bindingColor(state.profiles[g.profile], g.sign)
 }
@@ -28,7 +32,7 @@ function build() {
     const btn = document.createElement('button')
     btn.type = 'button'
     btn.className = 'group-btn'
-    btn.textContent = i === MASK_GROUP ? 'M' : String(i + 1)
+    btn.textContent = GROUP_LABELS[i] || String(i + 1)
     btn.addEventListener('click', () => cmd.chooseGroup(i))
     groupsWrap.appendChild(btn)
     buttons.push(btn)
@@ -73,12 +77,17 @@ export function refresh() {
     btn.style.borderBottomColor = hasRects ? groupColor(i) : 'transparent'
   }
 
+  const isColor = isColorGroup(state.active)
   const isMask = state.active === MASK_GROUP
   modeBtn.style.background = groupColor(state.active)
-  modeBtn.disabled = isMask
-  modeBtn.classList.toggle('dark', !isMask && state.groups[state.active].sign === -1)
+  modeBtn.disabled = !isColor
+  modeBtn.classList.toggle('dark', isColor && state.groups[state.active].sign === -1)
   modeBtn.classList.toggle('masked', isMask)
-  modeBtn.title = isMask ? 'Mask \u2014 press p to pick a style' : 'Toggle light/dark (i)'
+  modeBtn.classList.toggle('annot', isVectorGroup(state.active))
+  modeBtn.title = isMask ? 'Mask \u2014 right-click or p to pick a style'
+    : state.active === DRAW_GROUP ? 'Draw \u2014 right-click or p for shape and colour'
+    : state.active === ANNOT_GROUP ? 'Text \u2014 right-click or p for colour'
+    : 'Toggle light/dark (i)'
 
   const selSuffix = state.selected.size ? ` \u00b7 ${state.selected.size} selected` : ''
   const scaleSuffix = state.scale !== 1 ? ` \u00b7 ${Math.round(state.scale * 1000) / 10}%` : ''

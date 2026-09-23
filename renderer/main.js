@@ -1,8 +1,8 @@
 // Bootstrap + input wiring: pointer drag-to-highlight, keyboard shortcuts,
 // and menu commands delivered over the preload bridge.
 
-import { state, loadImage, applySettings, setThemeList, setThemeNotifier, setSource } from './state.js'
-import { MASK_GROUP } from './effect.js'
+import { state, loadImage, applySettings, setThemeList, setThemeNotifier, setSource, dirtyBBox } from './state.js'
+import { MASK_GROUP, DRAW_GROUP, ANNOT_GROUP, isVectorGroup } from './effect.js'
 import * as cmd from './commands.js'
 import { fit, paint, toImage, drawOverlay, exportPng, rasterizeSource } from './view.js'
 import { init as initStatusbar, refresh as statusbarRefresh } from './statusbar.js'
@@ -12,6 +12,7 @@ import { openThemePicker, isThemePickerOpen, handleThemePickerKey, refreshThemeP
 import { openHelp, closeHelp, isHelpOpen, scrollHelp } from './help.js'
 import { openResize, isResizeOpen, handleResizeKey, setResizeApplier } from './resize.js'
 import { keyLabels } from './keylabels.js'
+import { openTextEditor, isTextEditorOpen, commitTextEditor, cancelTextEditor } from './text-editor.js'
 
 const wrapEl = document.getElementById('wrap')
 const hintEl = document.getElementById('hint')
@@ -27,10 +28,6 @@ function toast(msg) {
 
 function hasImage() {
   return state.imageW > 0 && state.imageH > 0
-}
-
-function rectBBoxOf(r) {
-  return { x: r.x, y: r.y, w: r.w, h: r.h }
 }
 
 function unionRect(a, b) {
@@ -56,7 +53,17 @@ function buildPreviewRect(anchor, cur, group) {
   const y = Math.min(anchor.y, cur.y)
   const w = Math.abs(cur.x - anchor.x) + 1
   const h = Math.abs(cur.y - anchor.y) + 1
-  return { x, y, w, h, group }
+  const rect = { x, y, w, h, group }
+  if (group === DRAW_GROUP) {
+    rect.shape = state.drawShape
+    rect.color = state.drawColor
+    rect.flipX = cur.x < anchor.x
+    rect.flipY = cur.y < anchor.y
+  } else if (group === ANNOT_GROUP) {
+    rect.text = ''
+    rect.color = state.textColor
+  }
+  return rect
 }
 
 // --- Pointer: drag-to-highlight ---------------------------------------
@@ -76,14 +83,16 @@ function cancelDrag() {
   if (dragRect) {
     const idx = state.rects.indexOf(dragRect)
     if (idx !== -1) state.rects.splice(idx, 1)
-    paint(rectBBoxOf(dragRect))
+    paint(dirtyBBox(dragRect))
   }
   dragRect = null
   dragAnchor = null
 }
 
 wrapEl.addEventListener('pointerdown', (e) => {
+  if (e.target instanceof HTMLTextAreaElement) return
   if (e.button !== 0 || !hasImage()) return
+  if (isTextEditorOpen()) commitTextEditor()
   drawOverlay(null)
   dragAnchor = toImage(e.clientX, e.clientY)
   dragging = true
@@ -98,7 +107,7 @@ wrapEl.addEventListener('pointermove', (e) => {
   if (!hasImage()) return
 
   if (dragging) {
-    const prevBBox = dragRect ? rectBBoxOf(dragRect) : null
+    const prevBBox = dragRect ? dirtyBBox(dragRect) : null
     if (!dragRect) {
       dragRect = buildPreviewRect(dragAnchor, p, state.active)
       state.rects.push(dragRect)
@@ -108,8 +117,12 @@ wrapEl.addEventListener('pointermove', (e) => {
       dragRect.y = next.y
       dragRect.w = next.w
       dragRect.h = next.h
+      if (dragRect.group === DRAW_GROUP) {
+        dragRect.flipX = next.flipX
+        dragRect.flipY = next.flipY
+      }
     }
-    paint(unionRect(prevBBox, rectBBoxOf(dragRect)))
+    paint(unionRect(prevBBox, dirtyBBox(dragRect)))
     return
   }
 
@@ -129,15 +142,24 @@ wrapEl.addEventListener('pointerup', (e) => {
   if (dragRect) {
     const idx = state.rects.indexOf(dragRect)
     if (idx !== -1) state.rects.splice(idx, 1)
-    const bbox = rectBBoxOf(dragRect)
+    const bbox = dirtyBBox(dragRect)
     if (dragRect.w < 3 || dragRect.h < 3) {
       paint(bbox)
+    } else if (dragRect.group === ANNOT_GROUP) {
+      paint(bbox)
+      openTextEditor(dragRect, { isNew: true })
+      realDrag = true
     } else {
       cmd.commitRect(dragRect)
       realDrag = true
     }
   }
-  if (!realDrag) cmd.selectRect(findTopmostRectAt(lastPointer.x, lastPointer.y), e.ctrlKey || e.metaKey)
+  if (!realDrag) {
+    const hit = findTopmostRectAt(lastPointer.x, lastPointer.y)
+    if (hit && hit.group === ANNOT_GROUP) openTextEditor(hit, { isNew: false })
+    else if (hit && isVectorGroup(hit.group)) cmd.selectRect(null, e.ctrlKey || e.metaKey)
+    else cmd.selectRect(hit, e.ctrlKey || e.metaKey)
+  }
   dragRect = null
   dragAnchor = null
 })
@@ -170,10 +192,12 @@ function ctrlCommand(e) {
 
 window.addEventListener('keydown', (e) => {
   // A focused field keeps every native editing key, Ctrl+C/Ctrl+V included.
-  if (e.target instanceof HTMLInputElement && !isResizeOpen()) {
+  if ((e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) && !isResizeOpen()) {
     if (e.key === 'Escape') closeProfileEditor()
     return
   }
+
+  if (isTextEditorOpen()) return
 
   if (e.ctrlKey && !e.metaKey && !e.altKey) {
     const name = ctrlCommand(e)
@@ -266,6 +290,16 @@ window.addEventListener('keydown', (e) => {
     return
   }
 
+  if (e.key === 'd' || e.key === 'D') {
+    cmd.chooseGroup(DRAW_GROUP)
+    return
+  }
+
+  if (e.key === 'a' || e.key === 'A') {
+    cmd.chooseGroup(ANNOT_GROUP)
+    return
+  }
+
   if (e.key === 'u' || e.key === 'U') {
     handleUndo()
     return
@@ -279,6 +313,7 @@ window.addEventListener('keydown', (e) => {
 // --- Menu commands (IPC) -------------------------------------------------
 
 async function handlePaste() {
+  if (isTextEditorOpen()) cancelTextEditor()
   const res = await window.hl.readClipboardImage()
   if (!res.ok) {
     toast('Clipboard has no image')
@@ -298,6 +333,7 @@ async function handlePaste() {
 }
 
 async function handleCopy() {
+  commitTextEditor()
   if (!hasImage()) {
     toast('No image to copy')
     return
@@ -307,6 +343,7 @@ async function handleCopy() {
 }
 
 async function handleSave() {
+  commitTextEditor()
   if (!hasImage()) {
     toast('No image to save')
     return
