@@ -72,6 +72,15 @@ body {
   border-color: #e6e6e6;
 }
 
+.mode-btn.masked {
+  border-style: dotted;
+  border-color: #e6e6e6;
+}
+
+.mode-btn:disabled {
+  cursor: default;
+}
+
 .info {
   margin-left: auto;
   color: #8a8a8a;
@@ -295,6 +304,20 @@ body {
   margin-top: 10px;
   color: #8a8a8a;
   font-size: 11px;
+}
+
+.picker-cell.empty {
+  visibility: hidden;
+}
+
+.picker-cell.mask-noise {
+  background-image: repeating-linear-gradient(45deg, rgba(0, 0, 0, .7) 0 2px, transparent 2px 4px);
+}
+
+.picker-cell.mask-pixelate {
+  background-image:
+    repeating-linear-gradient(0deg, rgba(0, 0, 0, .55) 0 3px, transparent 3px 6px),
+    repeating-linear-gradient(90deg, rgba(0, 0, 0, .55) 0 3px, transparent 3px 6px);
 }
 
 .theme-overlay {

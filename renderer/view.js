@@ -1,7 +1,7 @@
 // Canvas sizing, dirty-rect rendering, overlay, hit-test geometry.
 
 import { state } from './state.js'
-import { stampModeMap, applyEffect } from './effect.js'
+import { stampModeMap, applyEffect, buildMaskEntries } from './effect.js'
 
 const stageEl = document.getElementById('stage')
 const wrapEl = document.getElementById('wrap')
@@ -81,8 +81,9 @@ function scratchFor(w, h) {
 export function paint(dirty) {
   if (!dirty) return
   stampModeMap(state.modeMap, state.imageW, state.rects, dirty)
+  const masks = buildMaskEntries(state.rects, state.base.data, state.imageW, state.imageH, dirty, state.baseGen, state.maskStyle)
   const buf = scratchFor(dirty.w, dirty.h)
-  applyEffect(state.base.data, buf.data, state.modeMap, state.imageW, state.shiftTable, dirty)
+  applyEffect(state.base.data, buf.data, state.modeMap, state.imageW, state.shiftTable, dirty, masks)
   baseCtx.putImageData(buf, dirty.x, dirty.y)
 }
 

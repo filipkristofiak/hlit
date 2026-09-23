@@ -2,6 +2,7 @@
 // and menu commands delivered over the preload bridge.
 
 import { state, loadImage, applySettings, setThemeList, setThemeNotifier, setSource } from './state.js'
+import { MASK_GROUP } from './effect.js'
 import * as cmd from './commands.js'
 import { fit, paint, toImage, drawOverlay, exportPng, rasterizeSource } from './view.js'
 import { init as initStatusbar, refresh as statusbarRefresh } from './statusbar.js'
@@ -255,6 +256,11 @@ window.addEventListener('keydown', (e) => {
 
   if (e.key === 'i' || e.key === 'I') {
     cmd.flipDirection()
+    return
+  }
+
+  if (e.key === 'm' || e.key === 'M') {
+    cmd.chooseGroup(MASK_GROUP)
     return
   }
 

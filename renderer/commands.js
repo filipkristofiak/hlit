@@ -3,7 +3,7 @@
 
 import * as doc from './state.js'
 import { paint, drawOverlay, fit, rasterizeSource } from './view.js'
-import { GROUP_COUNT } from './effect.js'
+import { GROUP_TOTAL } from './effect.js'
 
 let refreshStatusbar = () => {}
 let hoverProbe = () => null
@@ -21,9 +21,9 @@ function render(dirty, redrawOverlay) {
 }
 
 /**
- * Digit keys 1-5 and the status-bar group buttons. With a selection, the
- * selected rects move to that group; without one, the group just becomes
- * active. Either way `state.active` ends up on `groupIndex`.
+ * Digit keys 1-5, `m`/`M` (the M group) and the status-bar buttons. With a
+ * selection, the selected rects move to that group; without one, the group
+ * just becomes active. Either way `state.active` ends up on `groupIndex`.
  */
 export function chooseGroup(groupIndex) {
   if (doc.state.selected.size > 0) {
@@ -36,12 +36,17 @@ export function chooseGroup(groupIndex) {
 
 /** Tab / shift-Tab: moves the active group without touching the selection. */
 export function cycleActiveGroup(delta) {
-  doc.setActive((doc.state.active + GROUP_COUNT + delta) % GROUP_COUNT)
+  doc.setActive((doc.state.active + GROUP_TOTAL + delta) % GROUP_TOTAL)
   render(null, false)
 }
 
 export function flipDirection() {
   render(doc.toggleActiveSign(), false)
+}
+
+/** Mask menu cell: the M group adopts that style. */
+export function chooseMask(style) {
+  render(doc.setMaskStyle(style), false)
 }
 
 /** Picker cell: the active group adopts that profile in that direction. */
