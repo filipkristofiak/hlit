@@ -39,6 +39,8 @@ Detached launches and running the Electron binary directly are in
 - [docs/themes.md](docs/themes.md) — palette file format, locking, forking.
 - [docs/development.md](docs/development.md) — `npm run check` and the
   module map.
+- [docs/releasing.md](docs/releasing.md) — the versioning policy and the
+  tag-and-release procedure.
 
 ## License
 

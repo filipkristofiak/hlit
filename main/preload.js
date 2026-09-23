@@ -10,5 +10,6 @@ contextBridge.exposeInMainWorld('hl', {
   saveTheme: (id, theme) => ipcRenderer.invoke('themes:save', id, theme),
   openRepo: () => ipcRenderer.invoke('shell:open-repo'),
   onCommand: (cb) => ipcRenderer.on('command', (_e, name) => cb(name)),
+  version: (process.argv.find((a) => a.startsWith('--hl-version=')) || '').slice('--hl-version='.length),
   platform: process.platform
 })

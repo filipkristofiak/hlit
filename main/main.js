@@ -195,7 +195,8 @@ function createWindow() {
       preload: path.join(__dirname, 'preload.js'),
       sandbox: true,
       contextIsolation: true,
-      nodeIntegration: false
+      nodeIntegration: false,
+      additionalArguments: [`--hl-version=${app.getVersion()}`]
     }
   })
   win.loadURL('app://hl/')

@@ -148,7 +148,8 @@ function build() {
 
   const foot = document.createElement('div')
   foot.className = 'help-foot'
-  foot.textContent = '? or q closes \u00b7 j k / arrows scroll \u00b7 issues & source: '
+  const version = (window.hl && window.hl.version) ? `v${window.hl.version} \u00b7 ` : ''
+  foot.textContent = `${version}? or q closes \u00b7 j k / arrows scroll \u00b7 issues & source: `
 
   const repo = document.createElement('span')
   repo.className = 'help-link'

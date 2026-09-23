@@ -46,5 +46,8 @@ no Electron window required.
 - `themes/default.json` — the shipped seed theme, copied into
   `~/.config/hlit/themes/` at every launch.
 - `scripts/check-effect.mjs` — headless kernel/state assertions (`npm run check`).
+- `scripts/release-notes.mjs` — release gate and CHANGELOG extractor, run by
+  `.github/workflows/release.yml` on a `v*` tag push (see
+  [docs/releasing.md](releasing.md)).
 - `renderer/package.json` — `{ "type": "module" }`, which is what lets
   `renderer/` use ES modules while `main/` stays CommonJS.
