@@ -8,6 +8,7 @@ contextBridge.exposeInMainWorld('hl', {
   saveSettings: (data) => ipcRenderer.invoke('settings:save', data),
   listThemes: () => ipcRenderer.invoke('themes:list'),
   saveTheme: (id, theme) => ipcRenderer.invoke('themes:save', id, theme),
+  openRepo: () => ipcRenderer.invoke('shell:open-repo'),
   onCommand: (cb) => ipcRenderer.on('command', (_e, name) => cb(name)),
   platform: process.platform
 })

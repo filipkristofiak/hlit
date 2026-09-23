@@ -469,6 +469,17 @@ body {
   font-size: 11px;
 }
 
+.help-link {
+  color: #cfcfcf;
+  cursor: pointer;
+  text-decoration: underline;
+  user-select: text;
+}
+
+.help-link:hover {
+  color: #e6e6e6;
+}
+
 .help-section {
   margin-top: 12px;
   color: #e6e6e6;

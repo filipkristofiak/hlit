@@ -1,4 +1,4 @@
-const { app, BrowserWindow, protocol, net, ipcMain, clipboard, nativeImage, dialog } = require('electron')
+const { app, BrowserWindow, protocol, net, ipcMain, clipboard, nativeImage, dialog, shell } = require('electron')
 const path = require('path')
 const fs = require('fs')
 const { pathToFileURL } = require('url')
@@ -10,6 +10,7 @@ protocol.registerSchemesAsPrivileged([
 
 const RENDERER = path.join(__dirname, '..', 'renderer')
 const APP_ICON = path.join(__dirname, '..', 'assets', 'hlit_logo.png')
+const REPO_URL = 'https://github.com/filipkristofiak/hlit'
 
 let win = null
 
@@ -169,6 +170,15 @@ function registerIpc() {
       await fs.promises.writeFile(tmp, JSON.stringify(theme, null, 2) + '\n', 'utf8')
       await fs.promises.rename(tmp, target)
       return { ok: true, path: target }
+    } catch (err) {
+      return { ok: false, reason: String(err) }
+    }
+  })
+
+  ipcMain.handle('shell:open-repo', async () => {
+    try {
+      await shell.openExternal(REPO_URL)
+      return { ok: true }
     } catch (err) {
       return { ok: false, reason: String(err) }
     }

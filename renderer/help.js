@@ -148,7 +148,16 @@ function build() {
 
   const foot = document.createElement('div')
   foot.className = 'help-foot'
-  foot.textContent = '? or q closes \u00b7 j k / arrows scroll'
+  foot.textContent = '? or q closes \u00b7 j k / arrows scroll \u00b7 issues & source: '
+
+  const repo = document.createElement('span')
+  repo.className = 'help-link'
+  repo.textContent = 'github.com/filipkristofiak/hlit'
+  repo.addEventListener('click', () => {
+    if (window.hl && typeof window.hl.openRepo === 'function') window.hl.openRepo()
+  })
+  foot.appendChild(repo)
+
   panel.appendChild(foot)
 
   overlayEl.appendChild(panel)
