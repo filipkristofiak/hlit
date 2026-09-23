@@ -9,6 +9,7 @@ protocol.registerSchemesAsPrivileged([
 ])
 
 const RENDERER = path.join(__dirname, '..', 'renderer')
+const APP_ICON = path.join(__dirname, '..', 'assets', 'hlit_logo.png')
 
 let win = null
 
@@ -179,6 +180,7 @@ function createWindow() {
     width: 1280,
     height: 820,
     backgroundColor: '#161616',
+    icon: APP_ICON,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       sandbox: true,
@@ -190,6 +192,10 @@ function createWindow() {
 }
 
 app.whenReady().then(async () => {
+  // macOS takes the dock tile from the bundle when packaged; running `electron .`
+  // there is no bundle of ours, so set it explicitly. `app.dock` is undefined off macOS.
+  const icon = nativeImage.createFromPath(APP_ICON)
+  if (app.dock && !icon.isEmpty()) app.dock.setIcon(icon)
   registerAppProtocol()
   applyMenu((name) => { if (win) win.webContents.send('command', name) })
   registerIpc()
