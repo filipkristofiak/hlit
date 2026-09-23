@@ -2,6 +2,7 @@
 
 import { state } from './state.js'
 import * as cmd from './commands.js'
+import { openProfilePicker } from './picker.js'
 import { GROUP_TOTAL, MASK_GROUP } from './effect.js'
 import { bindingColor, maskColor } from './colors.js'
 
@@ -43,6 +44,14 @@ function build() {
   modeBtn.className = 'mode-btn'
   modeBtn.title = 'Toggle light/dark (i)'
   modeBtn.addEventListener('click', () => cmd.flipDirection())
+
+  // Mouse twin for p/P: the swatch is the active group's control, so a
+  // right-click on it opens that group's picker. Left-click still flips
+  // light/dark.
+  modeBtn.addEventListener('contextmenu', (e) => {
+    e.preventDefault()
+    openProfilePicker()
+  })
   statusEl.appendChild(modeBtn)
 
   info = document.createElement('span')

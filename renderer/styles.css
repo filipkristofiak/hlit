@@ -393,11 +393,33 @@ body {
 }
 
 .help-panel {
+  display: flex;
+  flex-direction: column;
+  width: min(1040px, calc(100vw - 32px));
+  max-height: calc(100vh - 32px);
   background: #202020;
   border: 1px solid #2c2c2c;
   border-radius: 8px;
   padding: 16px 20px;
   box-shadow: 0 8px 28px rgba(0, 0, 0, .6);
+}
+
+.help-body {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 0 28px;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.help-col {
+  flex: 1 1 420px;
+  min-width: 0;
+}
+
+.help-col > .help-section:first-child {
+  margin-top: 0;
 }
 
 .help-title {
@@ -421,6 +443,7 @@ body {
 }
 
 .help-foot {
+  flex: 0 0 auto;
   margin-top: 10px;
   color: #8a8a8a;
   font-size: 11px;
@@ -434,7 +457,7 @@ body {
 
 .help-note {
   margin-top: 4px;
-  max-width: 420px;
+  max-width: none;
   color: #8a8a8a;
   line-height: 1.4;
 }

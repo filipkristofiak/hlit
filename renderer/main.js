@@ -9,7 +9,7 @@ import { init as initStatusbar, refresh as statusbarRefresh } from './statusbar.
 import { isProfileEditorOpen, closeProfileEditor } from './profile-editor.js'
 import { openProfilePicker, isProfilePickerOpen, handleProfilePickerKey, refreshProfilePicker } from './picker.js'
 import { openThemePicker, isThemePickerOpen, handleThemePickerKey, refreshThemePicker } from './theme-picker.js'
-import { openHelp, closeHelp, isHelpOpen } from './help.js'
+import { openHelp, closeHelp, isHelpOpen, scrollHelp } from './help.js'
 import { openResize, isResizeOpen, handleResizeKey, setResizeApplier } from './resize.js'
 import { keyLabels } from './keylabels.js'
 
@@ -193,6 +193,8 @@ window.addEventListener('keydown', (e) => {
 
   if (isHelpOpen()) {
     if (e.key === 'Escape' || e.key === '?' || e.key === 'q' || e.key === 'Q') closeHelp()
+    else scrollHelp(e.key)
+    e.preventDefault()   // Space/arrows would otherwise scroll or re-activate a focused status-bar button
     return
   }
 
