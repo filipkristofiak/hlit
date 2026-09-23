@@ -1,4 +1,4 @@
-const { app, BrowserWindow, protocol, net, ipcMain, clipboard, nativeImage, dialog } = require('electron')
+const { app, BrowserWindow, protocol, net, ipcMain, clipboard, nativeImage, dialog, shell } = require('electron')
 const path = require('path')
 const fs = require('fs')
 const { pathToFileURL } = require('url')
@@ -9,6 +9,8 @@ protocol.registerSchemesAsPrivileged([
 ])
 
 const RENDERER = path.join(__dirname, '..', 'renderer')
+const APP_ICON = path.join(__dirname, '..', 'assets', 'hlit_logo.png')
+const REPO_URL = 'https://github.com/filipkristofiak/hlit'
 
 let win = null
 
@@ -172,6 +174,15 @@ function registerIpc() {
       return { ok: false, reason: String(err) }
     }
   })
+
+  ipcMain.handle('shell:open-repo', async () => {
+    try {
+      await shell.openExternal(REPO_URL)
+      return { ok: true }
+    } catch (err) {
+      return { ok: false, reason: String(err) }
+    }
+  })
 }
 
 function createWindow() {
@@ -179,17 +190,23 @@ function createWindow() {
     width: 1280,
     height: 820,
     backgroundColor: '#161616',
+    icon: APP_ICON,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       sandbox: true,
       contextIsolation: true,
-      nodeIntegration: false
+      nodeIntegration: false,
+      additionalArguments: [`--hl-version=${app.getVersion()}`]
     }
   })
   win.loadURL('app://hl/')
 }
 
 app.whenReady().then(async () => {
+  // macOS takes the dock tile from the bundle when packaged; running `electron .`
+  // there is no bundle of ours, so set it explicitly. `app.dock` is undefined off macOS.
+  const icon = nativeImage.createFromPath(APP_ICON)
+  if (app.dock && !icon.isEmpty()) app.dock.setIcon(icon)
   registerAppProtocol()
   applyMenu((name) => { if (win) win.webContents.send('command', name) })
   registerIpc()

@@ -1,22 +1,34 @@
 // Document state: image buffers, profiles, group bindings, rectangles, undo/redo.
 //
 // Rect: { x, y, w, h, group }       integer image-space pixels, w>=1, h>=1
-//   group is 0..GROUP_COUNT-1 (colour) or MASK_GROUP (the 6th group, always masked)
+//   group is 0..GROUP_COUNT-1 (colour), MASK_GROUP (the 6th group, always masked),
+//   DRAW_GROUP (vector outline rectangle or arrow) or ANNOT_GROUP (vector text box).
+//   Draw rect adds: { sx, sy, sw, sh, shape: 'rect'|'arrow', color: 0..4, flipX, flipY }
+//   Annotate rect adds: { sx, sy, sw, sh, text: string, color: 0..4 }
+//   flipX/flipY record which corner an arrow's drag started from — the one piece of
+//   arrow state a normalised bbox cannot express. Resizing re-derives x/y/w/h from
+//   sx/sy/sw/sh; flips, shape, color and text are untouched by a resize.
 // Profile: { pos:{r,g,b}, neg:{r,g,b}, linked }
 //   pos/neg each integers -255..255; linked true means neg is kept at -pos
 // GroupBinding: { profile, sign }   profile 0..PROFILE_COUNT-1; sign 1 | -1
-//   colour groups (0..GROUP_COUNT-1) only — MASK_GROUP has no entry in state.groups.
+//   colour groups (0..GROUP_COUNT-1) only — MASK_GROUP/DRAW_GROUP/ANNOT_GROUP have no entry in state.groups.
 // Op: { t:'add', rect } | { t:'del', rect, index }
 //   | { t:'group', group, from: GroupBinding, to: GroupBinding }
 //   | { t:'assign', entries: [{ rect, from, to }] }   bulk rect.group reassignment
 //   | { t:'maskstyle', from, to }   the M group's mask style
+//   | { t:'text', rect, from, to }   a committed edit of an A rect's string
 // Theme: { id, name, locked, builtin, profiles }   palette of PROFILE_COUNT profiles; id = theme filename stem
 
-import { GROUP_COUNT, MASK_GROUP, PROFILE_COUNT, DEFAULT_SHIFT, MASK_NOISE, MASK_STYLE_COUNT, buildShiftTable } from './effect.js'
+import {
+  GROUP_COUNT, MASK_GROUP, PROFILE_COUNT, DEFAULT_SHIFT, MASK_NOISE, MASK_STYLE_COUNT,
+  isColorGroup, isVectorGroup, buildShiftTable
+} from './effect.js'
 import { THEME_VERSION, isValidProfile, copyProfiles, normalizeTheme, nextForkId, nextForkName } from './themes.js'
+import { annotationPad } from './annotations.js'
+import { ANNOT_COLOR_COUNT } from './colors.js'
 
 const UNDO_CAP = 100
-const SETTINGS_VERSION = 4
+const SETTINGS_VERSION = 5
 const DEFAULT_THEME_ID = 'default'
 const SAVE_DEBOUNCE_MS = 150
 
@@ -56,6 +68,11 @@ export const state = {
   // The active group is the target of every group-level command (o/p, profile
   // buttons); it follows the most recently selected rect.
   active: 0,
+  // Style for the *next* D shape (not the rects already on screen).
+  drawShape: 'rect',
+  drawColor: 0,
+  // Colour for the *next* A text box.
+  textColor: 0,
   undo: [],
   redo: [],
   // The pristine clipboard bytes every resize re-decodes from, and the scale
@@ -70,6 +87,22 @@ function rectContains(r, x, y) {
 
 function rectBBox(r) {
   return { x: r.x, y: r.y, w: r.w, h: r.h }
+}
+
+function clampBBox(b) {
+  const x = Math.max(0, b.x)
+  const y = Math.max(0, b.y)
+  const w = Math.min(state.imageW, b.x + b.w) - x
+  const h = Math.min(state.imageH, b.y + b.h) - y
+  return w > 0 && h > 0 ? { x, y, w, h } : null
+}
+
+/** Repaint box for one rect: vector rects are inflated by the arrowhead/cap
+ *  overhang, then clipped to the image (paint() indexes state.base by it). */
+export function dirtyBBox(rect) {
+  if (!isVectorGroup(rect.group)) return rectBBox(rect)
+  const pad = annotationPad(state.scale)
+  return clampBBox({ x: rect.x - pad, y: rect.y - pad, w: rect.w + pad * 2, h: rect.h + pad * 2 })
 }
 
 function unionBBox(rects) {
@@ -100,7 +133,7 @@ function syncShiftTable() {
 }
 
 function rectsUsingProfile(profileIndex) {
-  return state.rects.filter((r) => r.group !== MASK_GROUP && state.groups[r.group].profile === profileIndex)
+  return state.rects.filter((r) => isColorGroup(r.group) && state.groups[r.group].profile === profileIndex)
 }
 
 function isValidGroup(g) {
@@ -111,6 +144,10 @@ function isValidGroup(g) {
 
 function isValidMaskStyle(v) {
   return Number.isInteger(v) && v >= 1 && v <= MASK_STYLE_COUNT
+}
+
+function isValidAnnotColor(v) {
+  return Number.isInteger(v) && v >= 0 && v < ANNOT_COLOR_COUNT
 }
 
 let notify = () => {}
@@ -169,7 +206,10 @@ function settingsSnapshot() {
     version: SETTINGS_VERSION,
     theme: state.theme.id,
     groups: state.groups.map((g) => ({ profile: g.profile, sign: g.sign })),
-    maskStyle: state.maskStyle
+    maskStyle: state.maskStyle,
+    drawShape: state.drawShape,
+    drawColor: state.drawColor,
+    textColor: state.textColor
   }
 }
 
@@ -260,8 +300,12 @@ export async function applySettings(raw) {
     : isValidMaskStyle(legacyMask) ? legacyMask
     : MASK_NOISE
 
+  state.drawShape = raw && (raw.drawShape === 'rect' || raw.drawShape === 'arrow') ? raw.drawShape : 'rect'
+  state.drawColor = raw && isValidAnnotColor(raw.drawColor) ? raw.drawColor : 0
+  state.textColor = raw && isValidAnnotColor(raw.textColor) ? raw.textColor : 0
+
   let targetId = DEFAULT_THEME_ID
-  if (raw && (raw.version === SETTINGS_VERSION || raw.version === 3) && typeof raw.theme === 'string' && themeById(raw.theme)) {
+  if (raw && raw.version >= 3 && raw.version <= SETTINGS_VERSION && typeof raw.theme === 'string' && themeById(raw.theme)) {
     targetId = raw.theme
   } else if (raw && raw.version === 2 && Array.isArray(raw.profiles) &&
              raw.profiles.length === PROFILE_COUNT && raw.profiles.every(isValidProfile)) {
@@ -308,7 +352,7 @@ export function addRect(rect) {
   rect.sh = Math.max(1, Math.round(rect.h / k))
   state.rects.push(rect)
   pushUndo({ t: 'add', rect })
-  return rectBBox(rect)
+  return dirtyBBox(rect)
 }
 
 export function deleteAt(x, y) {
@@ -318,7 +362,7 @@ export function deleteAt(x, y) {
       state.rects.splice(i, 1)
       state.selected.delete(r)
       pushUndo({ t: 'del', rect: r, index: i })
-      return rectBBox(r)
+      return dirtyBBox(r)
     }
   }
   return null
@@ -330,9 +374,14 @@ export function deleteAt(x, y) {
  * bbox covering only the rects that actually changed, or null if none did.
  */
 export function assignSelectedGroup(groupIndex) {
+  if (isVectorGroup(groupIndex)) {
+    state.active = groupIndex
+    return null
+  }
   state.active = groupIndex
   const entries = []
   for (const rect of state.selected) {
+    if (isVectorGroup(rect.group)) continue
     if (rect.group !== groupIndex) entries.push({ rect, from: rect.group, to: groupIndex })
   }
   if (entries.length === 0) return null
@@ -366,7 +415,7 @@ export function setGroupSign(group, sign) {
 
 export function toggleActiveSign() {
   const g = state.active
-  if (g === MASK_GROUP) return null
+  if (!isColorGroup(g)) return null
   return setGroupSign(g, state.groups[g].sign === 1 ? -1 : 1)
 }
 
@@ -380,6 +429,30 @@ export function setMaskStyle(style) {
   pushUndo({ t: 'maskstyle', from, to: style })
   saveSettings()
   return unionBBox(state.rects.filter((r) => r.group === MASK_GROUP))
+}
+
+export function setDrawStyle(shape, colorIndex) {
+  if (shape !== 'rect' && shape !== 'arrow') return null
+  if (!isValidAnnotColor(colorIndex)) return null
+  state.drawShape = shape
+  state.drawColor = colorIndex
+  saveSettings()
+  return null
+}
+
+export function setTextColor(colorIndex) {
+  if (!isValidAnnotColor(colorIndex)) return null
+  state.textColor = colorIndex
+  saveSettings()
+  return null
+}
+
+/** Committed edit of an existing A rect's string. Undoable on its own op. */
+export function setRectText(rect, text) {
+  if (text === rect.text) return null
+  pushUndo({ t: 'text', rect, from: rect.text, to: text })
+  rect.text = text
+  return dirtyBBox(rect)
 }
 
 export function setProfileChannel(profileIndex, side, channel, value) {
@@ -458,10 +531,10 @@ function undoOp(op) {
     case 'add':
       removeRectRef(op.rect)
       state.selected.delete(op.rect)
-      return rectBBox(op.rect)
+      return dirtyBBox(op.rect)
     case 'del':
       state.rects.splice(op.index, 0, op.rect)
-      return rectBBox(op.rect)
+      return dirtyBBox(op.rect)
     case 'group':
       state.groups[op.group] = { ...op.from }
       syncShiftTable()
@@ -474,6 +547,9 @@ function undoOp(op) {
       state.maskStyle = op.from
       saveSettings()
       return unionBBox(state.rects.filter((r) => r.group === MASK_GROUP))
+    case 'text':
+      op.rect.text = op.from
+      return dirtyBBox(op.rect)
     default:
       return null
   }
@@ -483,11 +559,11 @@ function redoOp(op) {
   switch (op.t) {
     case 'add':
       state.rects.push(op.rect)
-      return rectBBox(op.rect)
+      return dirtyBBox(op.rect)
     case 'del':
       removeRectRef(op.rect)
       state.selected.delete(op.rect)
-      return rectBBox(op.rect)
+      return dirtyBBox(op.rect)
     case 'group':
       state.groups[op.group] = { ...op.to }
       syncShiftTable()
@@ -500,6 +576,9 @@ function redoOp(op) {
       state.maskStyle = op.to
       saveSettings()
       return unionBBox(state.rects.filter((r) => r.group === MASK_GROUP))
+    case 'text':
+      op.rect.text = op.to
+      return dirtyBBox(op.rect)
     default:
       return null
   }
@@ -546,4 +625,15 @@ export function toggleSelect(rect) {
 
 export function clearSelection() {
   state.selected.clear()
+}
+
+/** Deletes `rect` by identity (not position) — used to drop an emptied A
+ *  text box. Mirrors deleteAt but keyed on the rect reference. */
+export function deleteRectRef(rect) {
+  const idx = state.rects.indexOf(rect)
+  if (idx === -1) return null
+  state.rects.splice(idx, 1)
+  state.selected.delete(rect)
+  pushUndo({ t: 'del', rect, index: idx })
+  return dirtyBBox(rect)
 }

@@ -5,9 +5,9 @@
 
 import { state } from './state.js'
 import * as cmd from './commands.js'
-import { sideColor, maskColor } from './colors.js'
+import { sideColor, maskColor, annotColor, ANNOT_COLOR_COUNT, ANNOT_COLOR_LABELS } from './colors.js'
 import { openProfileEditor } from './profile-editor.js'
-import { PROFILE_COUNT, MASK_STYLE_COUNT, MASK_NOISE, MASK_PIXELATE, MASK_GROUP } from './effect.js'
+import { PROFILE_COUNT, MASK_STYLE_COUNT, MASK_NOISE, MASK_PIXELATE, MASK_GROUP, DRAW_GROUP, ANNOT_GROUP } from './effect.js'
 
 const COLOR_ROWS = [
   { kind: 'shift', sign: 1, side: 'pos', label: 'Light' },
@@ -15,12 +15,17 @@ const COLOR_ROWS = [
 ]
 const MASK_ROWS = [{ kind: 'mask', label: 'Mask' }]
 const MASK_LABELS = ['noise', 'pixelate', 'light', 'dark']
+const DRAW_ROWS = [{ kind: 'draw', label: 'Rectangle', shape: 'rect' }, { kind: 'draw', label: 'Arrow', shape: 'arrow' }]
+const TEXT_ROWS = [{ kind: 'text', label: 'Text' }]
 
 let rows = COLOR_ROWS
-let mode = null          // 'color' | 'mask'; null until the first build
+let mode = null          // 'color' | 'mask' | 'draw' | 'text'; null until the first build
 
 function colCount(row) {
-  return rows[row].kind === 'mask' ? MASK_STYLE_COUNT : PROFILE_COUNT
+  const kind = rows[row].kind
+  if (kind === 'mask') return MASK_STYLE_COUNT
+  if (kind === 'draw' || kind === 'text') return ANNOT_COLOR_COUNT
+  return PROFILE_COUNT
 }
 
 const LEFT_KEYS = new Set(['h', 'H', 'ArrowLeft'])
@@ -51,12 +56,12 @@ function ensureOverlay() {
 
 function buildGrid(nextMode) {
   mode = nextMode
-  rows = nextMode === 'mask' ? MASK_ROWS : COLOR_ROWS
+  rows = nextMode === 'mask' ? MASK_ROWS : nextMode === 'draw' ? DRAW_ROWS : nextMode === 'text' ? TEXT_ROWS : COLOR_ROWS
   panelEl.innerHTML = ''
 
   const title = document.createElement('div')
   title.className = 'picker-title'
-  title.textContent = nextMode === 'mask' ? 'Mask' : 'Binding'
+  title.textContent = nextMode === 'mask' ? 'Mask' : nextMode === 'draw' ? 'Draw' : nextMode === 'text' ? 'Text' : 'Binding'
   panelEl.appendChild(title)
 
   const grid = document.createElement('div')
@@ -91,6 +96,9 @@ function buildGrid(nextMode) {
         if (col + 1 === MASK_NOISE) cell.classList.add('mask-noise')
         else if (col + 1 === MASK_PIXELATE) cell.classList.add('mask-pixelate')
         cell.title = `Mask \u2014 ${MASK_LABELS[col]}`
+      } else if (r.kind === 'draw' || r.kind === 'text') {
+        cell.style.backgroundColor = annotColor(col)
+        cell.title = `${r.label} \u2014 ${ANNOT_COLOR_LABELS[col]}`
       } else {
         cell.title = `Profile ${col + 1} ${r.label.toLowerCase()} \u2014 shift+click to edit`
       }
@@ -129,6 +137,10 @@ function buildGrid(nextMode) {
   foot.className = 'picker-foot'
   foot.textContent = nextMode === 'mask'
     ? '1\u20134 pick \u00b7 hl/arrows move \u00b7 gG ends \u00b7 Enter apply \u00b7 q close \u00b7 1 noise 2 pixelate 3 light 4 dark'
+    : nextMode === 'draw'
+    ? '1\u20135 pick a colour \u00b7 jk/arrows move \u00b7 Enter apply \u00b7 q close \u00b7 row picks the shape'
+    : nextMode === 'text'
+    ? '1\u20135 pick a colour \u00b7 Enter apply \u00b7 q close'
     : '1\u20135 pick \u00b7 hjkl/arrows move \u00b7 gG ends \u00b7 Enter apply \u00b7 E edit \u00b7 q close'
   panelEl.appendChild(foot)
 }
@@ -144,15 +156,16 @@ function syncColors() {
 }
 
 function syncCursor() {
-  const g = state.groups[state.active]
+  const g = mode === 'color' ? state.groups[state.active] : null
   for (let row = 0; row < rows.length; row++) {
     const r = rows[row]
     const n = colCount(row)
     for (let col = 0; col < n; col++) {
       const cell = cells[row][col]
       cell.classList.toggle('cursor', cursor.row === row && cursor.col === col)
-      const current = r.kind === 'mask'
-        ? state.maskStyle === col + 1
+      const current = r.kind === 'mask' ? state.maskStyle === col + 1
+        : r.kind === 'draw' ? state.drawShape === r.shape && state.drawColor === col
+        : r.kind === 'text' ? state.textColor === col
         : g.profile === col && g.sign === r.sign
       cell.classList.toggle('current', current)
     }
@@ -160,7 +173,10 @@ function syncCursor() {
 }
 
 function apply(row, col) {
-  if (rows[row].kind === 'mask') cmd.chooseMask(col + 1)
+  const kind = rows[row].kind
+  if (kind === 'mask') cmd.chooseMask(col + 1)
+  else if (kind === 'draw') cmd.chooseDrawStyle(rows[row].shape, col)
+  else if (kind === 'text') cmd.chooseTextColor(col)
   else cmd.chooseBinding(col, rows[row].sign)
   closeProfilePicker()
 }
@@ -181,10 +197,17 @@ export function openProfilePicker() {
   // A status-bar button left focused by an earlier click would take Enter/Space
   // as its own activation while the picker is open.
   if (document.activeElement instanceof HTMLElement) document.activeElement.blur()
-  const nextMode = state.active === MASK_GROUP ? 'mask' : 'color'
+  const nextMode = state.active === MASK_GROUP ? 'mask'
+    : state.active === DRAW_GROUP ? 'draw'
+    : state.active === ANNOT_GROUP ? 'text'
+    : 'color'
   if (nextMode !== mode) buildGrid(nextMode)
   cursor = nextMode === 'mask'
     ? { row: 0, col: state.maskStyle - 1 }
+    : nextMode === 'draw'
+    ? { row: state.drawShape === 'arrow' ? 1 : 0, col: state.drawColor }
+    : nextMode === 'text'
+    ? { row: 0, col: state.textColor }
     : { row: state.groups[state.active].sign === 1 ? 0 : 1, col: state.groups[state.active].profile }
   syncColors()
   syncCursor()

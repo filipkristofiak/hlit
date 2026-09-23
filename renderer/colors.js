@@ -32,3 +32,13 @@ const MASK_COLORS = ['transparent', '#8a8a8a', '#7a7a7a', '#e6e6e6', '#1a1a1a']
 export function maskColor(style) {
   return MASK_COLORS[style] || 'transparent'
 }
+
+// D/A palette. Fixed five, one per picker column; index 0 (red) is the default.
+const ANNOT_COLORS = ['#ff3b30', '#ffcc00', '#34c759', '#0a84ff', '#ffffff']
+export const ANNOT_COLOR_COUNT = ANNOT_COLORS.length
+export const ANNOT_COLOR_LABELS = ['red', 'yellow', 'green', 'blue', 'white']
+
+/** CSS colour for a D/A colour index; out-of-range falls back to red. */
+export function annotColor(i) {
+  return ANNOT_COLORS[i] || ANNOT_COLORS[0]
+}
