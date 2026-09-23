@@ -1,51 +1,75 @@
-// Profile picker: a 2x5 popup grid (row 0 = light, row 1 = dark) opened
-// with P. Neovim-menu style — move the cursor with hjkl/arrows, confirm with
-// Enter, or take a column straight off with 1-5. Picking sets the active
-// group's profile and direction in one command.
+// Binding picker: a popup grid opened with P, per-group menu — Neovim-menu
+// style — move the cursor with hjkl/arrows, confirm with Enter, or take a
+// column straight off with digits. The picker is the active group's menu:
+// colour groups (1-5) get the Light/Dark rows, the M group gets the Mask row.
 
 import { state } from './state.js'
 import * as cmd from './commands.js'
-import { sideColor } from './colors.js'
+import { sideColor, maskColor } from './colors.js'
 import { openProfileEditor } from './profile-editor.js'
-import { PROFILE_COUNT } from './effect.js'
+import { PROFILE_COUNT, MASK_STYLE_COUNT, MASK_NOISE, MASK_PIXELATE, MASK_GROUP } from './effect.js'
 
-const ROWS = [
-  { sign: 1, side: 'pos', label: 'Light' },
-  { sign: -1, side: 'neg', label: 'Dark' }
+const COLOR_ROWS = [
+  { kind: 'shift', sign: 1, side: 'pos', label: 'Light' },
+  { kind: 'shift', sign: -1, side: 'neg', label: 'Dark' }
 ]
+const MASK_ROWS = [{ kind: 'mask', label: 'Mask' }]
+const MASK_LABELS = ['noise', 'pixelate', 'light', 'dark']
+
+let rows = COLOR_ROWS
+let mode = null          // 'color' | 'mask'; null until the first build
+
+function colCount(row) {
+  return rows[row].kind === 'mask' ? MASK_STYLE_COUNT : PROFILE_COUNT
+}
 
 const LEFT_KEYS = new Set(['h', 'H', 'ArrowLeft'])
 const RIGHT_KEYS = new Set(['l', 'L', 'ArrowRight'])
-const ROW_KEYS = new Set(['j', 'J', 'k', 'K', 'ArrowUp', 'ArrowDown'])
+const UP_KEYS = new Set(['k', 'K', 'ArrowUp'])
+const DOWN_KEYS = new Set(['j', 'J', 'ArrowDown'])
 
 let overlayEl = null
+let panelEl = null
 let cells = []            // cells[row][col]
 let cursor = { row: 0, col: 0 }
 let isOpen = false
 
-function build() {
+function ensureOverlay() {
+  if (overlayEl) return
   overlayEl = document.createElement('div')
   overlayEl.className = 'picker-overlay'
   overlayEl.style.display = 'none'
   overlayEl.addEventListener('mousedown', closeProfilePicker)
 
-  const panel = document.createElement('div')
-  panel.className = 'picker'
-  panel.addEventListener('mousedown', (e) => e.stopPropagation())
+  panelEl = document.createElement('div')
+  panelEl.className = 'picker'
+  panelEl.addEventListener('mousedown', (e) => e.stopPropagation())
+
+  overlayEl.appendChild(panelEl)
+  document.body.appendChild(overlayEl)
+}
+
+function buildGrid(nextMode) {
+  mode = nextMode
+  rows = nextMode === 'mask' ? MASK_ROWS : COLOR_ROWS
+  panelEl.innerHTML = ''
 
   const title = document.createElement('div')
   title.className = 'picker-title'
-  title.textContent = 'Profile'
-  panel.appendChild(title)
+  title.textContent = nextMode === 'mask' ? 'Mask' : 'Binding'
+  panelEl.appendChild(title)
 
   const grid = document.createElement('div')
   grid.className = 'picker-grid'
 
   cells = []
-  for (let row = 0; row < ROWS.length; row++) {
+  for (let row = 0; row < rows.length; row++) {
+    const r = rows[row]
+    const n = colCount(row)
+
     const rowLabel = document.createElement('span')
     rowLabel.className = 'picker-rowlabel'
-    rowLabel.textContent = ROWS[row].label
+    rowLabel.textContent = r.label
     grid.appendChild(rowLabel)
 
     cells[row] = []
@@ -53,14 +77,31 @@ function build() {
       const cell = document.createElement('button')
       cell.type = 'button'
       cell.className = 'picker-cell'
-      cell.title = `Profile ${col + 1} ${ROWS[row].label.toLowerCase()} \u2014 shift+click to edit`
+
+      if (col >= n) {
+        cell.classList.add('empty')
+        cell.disabled = true
+        grid.appendChild(cell)
+        cells[row].push(cell)
+        continue
+      }
+
+      if (r.kind === 'mask') {
+        cell.style.backgroundColor = maskColor(col + 1)
+        if (col + 1 === MASK_NOISE) cell.classList.add('mask-noise')
+        else if (col + 1 === MASK_PIXELATE) cell.classList.add('mask-pixelate')
+        cell.title = `Mask \u2014 ${MASK_LABELS[col]}`
+      } else {
+        cell.title = `Profile ${col + 1} ${r.label.toLowerCase()} \u2014 shift+click to edit`
+      }
+
       cell.addEventListener('mousemove', () => {
         if (cursor.row === row && cursor.col === col) return
         cursor = { row, col }
         syncCursor()
       })
       cell.addEventListener('click', (e) => {
-        if (e.shiftKey) edit(col, cell)
+        if (r.kind === 'shift' && e.shiftKey) edit(col, cell)
         else apply(row, col)
       })
       grid.appendChild(cell)
@@ -71,45 +112,56 @@ function build() {
   const spacer = document.createElement('span')
   spacer.className = 'picker-rowlabel'
   grid.appendChild(spacer)
-  for (let col = 0; col < PROFILE_COUNT; col++) {
+  const maxCols = Math.max(...rows.map((_r, i) => colCount(i)))
+  for (let col = 0; col < maxCols; col++) {
     const digit = document.createElement('span')
     digit.className = 'picker-digit'
     digit.textContent = String(col + 1)
     grid.appendChild(digit)
   }
+  for (let col = maxCols; col < PROFILE_COUNT; col++) {
+    grid.appendChild(document.createElement('span')).className = 'picker-digit'
+  }
 
-  panel.appendChild(grid)
+  panelEl.appendChild(grid)
 
   const foot = document.createElement('div')
   foot.className = 'picker-foot'
-  foot.textContent = '1\u20135 pick \u00b7 hjkl/arrows move \u00b7 gG ends \u00b7 Enter apply \u00b7 E edit \u00b7 q close'
-  panel.appendChild(foot)
-
-  overlayEl.appendChild(panel)
-  document.body.appendChild(overlayEl)
+  foot.textContent = nextMode === 'mask'
+    ? '1\u20134 pick \u00b7 hl/arrows move \u00b7 gG ends \u00b7 Enter apply \u00b7 q close \u00b7 1 noise 2 pixelate 3 light 4 dark'
+    : '1\u20135 pick \u00b7 hjkl/arrows move \u00b7 gG ends \u00b7 Enter apply \u00b7 E edit \u00b7 q close'
+  panelEl.appendChild(foot)
 }
 
 function syncColors() {
-  for (let row = 0; row < ROWS.length; row++) {
+  if (mode !== 'color') return
+  for (let row = 0; row < rows.length; row++) {
+    if (rows[row].kind !== 'shift') continue
     for (let col = 0; col < PROFILE_COUNT; col++) {
-      cells[row][col].style.background = sideColor(state.profiles[col][ROWS[row].side], ROWS[row].sign)
+      cells[row][col].style.background = sideColor(state.profiles[col][rows[row].side], rows[row].sign)
     }
   }
 }
 
 function syncCursor() {
   const g = state.groups[state.active]
-  for (let row = 0; row < ROWS.length; row++) {
-    for (let col = 0; col < PROFILE_COUNT; col++) {
+  for (let row = 0; row < rows.length; row++) {
+    const r = rows[row]
+    const n = colCount(row)
+    for (let col = 0; col < n; col++) {
       const cell = cells[row][col]
       cell.classList.toggle('cursor', cursor.row === row && cursor.col === col)
-      cell.classList.toggle('current', g.profile === col && g.sign === ROWS[row].sign)
+      const current = r.kind === 'mask'
+        ? state.maskStyle === col + 1
+        : g.profile === col && g.sign === r.sign
+      cell.classList.toggle('current', current)
     }
   }
 }
 
 function apply(row, col) {
-  cmd.chooseBinding(col, ROWS[row].sign)
+  if (rows[row].kind === 'mask') cmd.chooseMask(col + 1)
+  else cmd.chooseBinding(col, rows[row].sign)
   closeProfilePicker()
 }
 
@@ -125,12 +177,15 @@ export function refreshProfilePicker() {
 }
 
 export function openProfilePicker() {
-  if (!overlayEl) build()
+  ensureOverlay()
   // A status-bar button left focused by an earlier click would take Enter/Space
   // as its own activation while the picker is open.
   if (document.activeElement instanceof HTMLElement) document.activeElement.blur()
-  const g = state.groups[state.active]
-  cursor = { row: g.sign === 1 ? 0 : 1, col: g.profile }
+  const nextMode = state.active === MASK_GROUP ? 'mask' : 'color'
+  if (nextMode !== mode) buildGrid(nextMode)
+  cursor = nextMode === 'mask'
+    ? { row: 0, col: state.maskStyle - 1 }
+    : { row: state.groups[state.active].sign === 1 ? 0 : 1, col: state.groups[state.active].profile }
   syncColors()
   syncCursor()
   overlayEl.style.display = 'flex'
@@ -152,7 +207,8 @@ export function handleProfilePickerKey(key) {
     closeProfilePicker()
     return
   }
-  if (key >= '1' && key <= String(PROFILE_COUNT)) {
+  const n = colCount(cursor.row)
+  if (key >= '1' && key <= String(n)) {
     apply(cursor.row, Number(key) - 1)
     return
   }
@@ -161,7 +217,7 @@ export function handleProfilePickerKey(key) {
     return
   }
   if (key === 'e' || key === 'E') {
-    edit(cursor.col, cells[cursor.row][cursor.col])
+    if (rows[cursor.row].kind === 'shift') edit(cursor.col, cells[cursor.row][cursor.col])
     return
   }
   if (key === 'g') {
@@ -170,22 +226,29 @@ export function handleProfilePickerKey(key) {
     return
   }
   if (key === 'G') {
-    cursor.col = PROFILE_COUNT - 1
+    cursor.col = n - 1
     syncCursor()
     return
   }
   if (LEFT_KEYS.has(key)) {
-    cursor.col = (cursor.col + PROFILE_COUNT - 1) % PROFILE_COUNT
+    cursor.col = (cursor.col + n - 1) % n
     syncCursor()
     return
   }
   if (RIGHT_KEYS.has(key)) {
-    cursor.col = (cursor.col + 1) % PROFILE_COUNT
+    cursor.col = (cursor.col + 1) % n
     syncCursor()
     return
   }
-  if (ROW_KEYS.has(key)) {
-    cursor.row = cursor.row === 0 ? 1 : 0
+  if (UP_KEYS.has(key)) {
+    cursor.row = (cursor.row + rows.length - 1) % rows.length
+    cursor.col = Math.min(cursor.col, colCount(cursor.row) - 1)
+    syncCursor()
+    return
+  }
+  if (DOWN_KEYS.has(key)) {
+    cursor.row = (cursor.row + 1) % rows.length
+    cursor.col = Math.min(cursor.col, colCount(cursor.row) - 1)
     syncCursor()
   }
 }

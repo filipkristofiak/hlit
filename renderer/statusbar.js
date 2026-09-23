@@ -2,8 +2,8 @@
 
 import { state } from './state.js'
 import * as cmd from './commands.js'
-import { GROUP_COUNT } from './effect.js'
-import { bindingColor } from './colors.js'
+import { GROUP_TOTAL, MASK_GROUP } from './effect.js'
+import { bindingColor, maskColor } from './colors.js'
 
 const statusEl = document.getElementById('status')
 
@@ -12,6 +12,7 @@ let modeBtn = null
 let info = null
 
 function groupColor(groupIndex) {
+  if (groupIndex === MASK_GROUP) return maskColor(state.maskStyle)
   const g = state.groups[groupIndex]
   return bindingColor(state.profiles[g.profile], g.sign)
 }
@@ -22,11 +23,11 @@ function build() {
   const groupsWrap = document.createElement('div')
   groupsWrap.className = 'groups'
   buttons = []
-  for (let i = 0; i < GROUP_COUNT; i++) {
+  for (let i = 0; i < GROUP_TOTAL; i++) {
     const btn = document.createElement('button')
     btn.type = 'button'
     btn.className = 'group-btn'
-    btn.textContent = String(i + 1)
+    btn.textContent = i === MASK_GROUP ? 'M' : String(i + 1)
     btn.addEventListener('click', () => cmd.chooseGroup(i))
     groupsWrap.appendChild(btn)
     buttons.push(btn)
@@ -55,7 +56,7 @@ export function init() {
 }
 
 export function refresh() {
-  for (let i = 0; i < GROUP_COUNT; i++) {
+  for (let i = 0; i < GROUP_TOTAL; i++) {
     const btn = buttons[i]
     const hasRects = state.rects.some((r) => r.group === i)
     btn.classList.toggle('active', state.active === i)
@@ -63,8 +64,12 @@ export function refresh() {
     btn.style.borderBottomColor = hasRects ? groupColor(i) : 'transparent'
   }
 
+  const isMask = state.active === MASK_GROUP
   modeBtn.style.background = groupColor(state.active)
-  modeBtn.classList.toggle('dark', state.groups[state.active].sign === -1)
+  modeBtn.disabled = isMask
+  modeBtn.classList.toggle('dark', !isMask && state.groups[state.active].sign === -1)
+  modeBtn.classList.toggle('masked', isMask)
+  modeBtn.title = isMask ? 'Mask \u2014 press p to pick a style' : 'Toggle light/dark (i)'
 
   const selSuffix = state.selected.size ? ` \u00b7 ${state.selected.size} selected` : ''
   const scaleSuffix = state.scale !== 1 ? ` \u00b7 ${Math.round(state.scale * 1000) / 10}%` : ''

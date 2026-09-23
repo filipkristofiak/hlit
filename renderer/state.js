@@ -1,19 +1,22 @@
 // Document state: image buffers, profiles, group bindings, rectangles, undo/redo.
 //
 // Rect: { x, y, w, h, group }       integer image-space pixels, w>=1, h>=1
+//   group is 0..GROUP_COUNT-1 (colour) or MASK_GROUP (the 6th group, always masked)
 // Profile: { pos:{r,g,b}, neg:{r,g,b}, linked }
 //   pos/neg each integers -255..255; linked true means neg is kept at -pos
 // GroupBinding: { profile, sign }   profile 0..PROFILE_COUNT-1; sign 1 | -1
+//   colour groups (0..GROUP_COUNT-1) only — MASK_GROUP has no entry in state.groups.
 // Op: { t:'add', rect } | { t:'del', rect, index }
 //   | { t:'group', group, from: GroupBinding, to: GroupBinding }
 //   | { t:'assign', entries: [{ rect, from, to }] }   bulk rect.group reassignment
+//   | { t:'maskstyle', from, to }   the M group's mask style
 // Theme: { id, name, locked, builtin, profiles }   palette of PROFILE_COUNT profiles; id = theme filename stem
 
-import { GROUP_COUNT, PROFILE_COUNT, DEFAULT_SHIFT, buildShiftTable } from './effect.js'
+import { GROUP_COUNT, MASK_GROUP, PROFILE_COUNT, DEFAULT_SHIFT, MASK_NOISE, MASK_STYLE_COUNT, buildShiftTable } from './effect.js'
 import { THEME_VERSION, isValidProfile, copyProfiles, normalizeTheme, nextForkId, nextForkName } from './themes.js'
 
 const UNDO_CAP = 100
-const SETTINGS_VERSION = 3
+const SETTINGS_VERSION = 4
 const DEFAULT_THEME_ID = 'default'
 const SAVE_DEBOUNCE_MS = 150
 
@@ -36,11 +39,15 @@ export const state = {
   imageW: 0,
   imageH: 0,
   base: null,   // ImageData
-  modeMap: null, // Uint8Array(w*h)
+  modeMap: null, // Uint16Array(w*h)
   rects: [],
   selected: new Set(), // Set<rect>, currently selected for bulk group reassignment
   profiles: defaultProfiles(),
   groups: defaultGroups(),
+  // The M group's style — every rect in `MASK_GROUP` repaints with it.
+  maskStyle: MASK_NOISE,
+  // Bumped on every loadImage/resizeTo; invalidates every cached rect.maskStats.
+  baseGen: 0,
   // Palette provenance: `themes` is every theme the main process found, `theme`
   // is the one `profiles` was loaded from. Editing a locked theme forks first.
   themes: [],
@@ -93,13 +100,17 @@ function syncShiftTable() {
 }
 
 function rectsUsingProfile(profileIndex) {
-  return state.rects.filter((r) => state.groups[r.group].profile === profileIndex)
+  return state.rects.filter((r) => r.group !== MASK_GROUP && state.groups[r.group].profile === profileIndex)
 }
 
 function isValidGroup(g) {
   return g && typeof g === 'object' &&
     Number.isInteger(g.profile) && g.profile >= 0 && g.profile < PROFILE_COUNT &&
     (g.sign === 1 || g.sign === -1)
+}
+
+function isValidMaskStyle(v) {
+  return Number.isInteger(v) && v >= 1 && v <= MASK_STYLE_COUNT
 }
 
 let notify = () => {}
@@ -157,7 +168,8 @@ function settingsSnapshot() {
   return {
     version: SETTINGS_VERSION,
     theme: state.theme.id,
-    groups: state.groups.map((g) => ({ profile: g.profile, sign: g.sign }))
+    groups: state.groups.map((g) => ({ profile: g.profile, sign: g.sign })),
+    maskStyle: state.maskStyle
   }
 }
 
@@ -241,8 +253,15 @@ export async function applySettings(raw) {
     ? groups.map((g) => ({ profile: g.profile, sign: g.sign }))
     : defaultGroups()
 
+  const legacyMask = Array.isArray(groups)
+    ? (groups.find((g) => g && isValidMaskStyle(g.mask)) || {}).mask
+    : undefined
+  state.maskStyle = isValidMaskStyle(raw && raw.maskStyle) ? raw.maskStyle
+    : isValidMaskStyle(legacyMask) ? legacyMask
+    : MASK_NOISE
+
   let targetId = DEFAULT_THEME_ID
-  if (raw && raw.version === SETTINGS_VERSION && typeof raw.theme === 'string' && themeById(raw.theme)) {
+  if (raw && (raw.version === SETTINGS_VERSION || raw.version === 3) && typeof raw.theme === 'string' && themeById(raw.theme)) {
     targetId = raw.theme
   } else if (raw && raw.version === 2 && Array.isArray(raw.profiles) &&
              raw.profiles.length === PROFILE_COUNT && raw.profiles.every(isValidProfile)) {
@@ -271,7 +290,8 @@ export function loadImage(imageData) {
   state.imageW = imageData.width
   state.imageH = imageData.height
   state.base = imageData
-  state.modeMap = new Uint8Array(imageData.width * imageData.height)
+  state.modeMap = new Uint16Array(imageData.width * imageData.height)
+  state.baseGen++
   state.rects = []
   state.selected = new Set()
   state.active = 0
@@ -321,7 +341,9 @@ export function assignSelectedGroup(groupIndex) {
   return unionBBox(entries.map((e) => e.rect))
 }
 
-/** The single group-binding mutator: profile and sign move together in one undo step. */
+/** The single colour-group binding mutator: profile and sign move together in
+ * one undo step. Colour groups only — `MASK_GROUP` has no entry in
+ * `state.groups`. */
 export function setGroupBinding(group, profileIndex, sign) {
   const g = state.groups[group]
   if (g.profile === profileIndex && g.sign === sign) return null
@@ -344,7 +366,20 @@ export function setGroupSign(group, sign) {
 
 export function toggleActiveSign() {
   const g = state.active
+  if (g === MASK_GROUP) return null
   return setGroupSign(g, state.groups[g].sign === 1 ? -1 : 1)
+}
+
+/** The M group's mask style. One style for the whole group: every rect in it
+ *  repaints. Undoable on its own op so a picker choice round-trips like a
+ *  colour binding does. */
+export function setMaskStyle(style) {
+  if (style === state.maskStyle) return null
+  const from = state.maskStyle
+  state.maskStyle = style
+  pushUndo({ t: 'maskstyle', from, to: style })
+  saveSettings()
+  return unionBBox(state.rects.filter((r) => r.group === MASK_GROUP))
 }
 
 export function setProfileChannel(profileIndex, side, channel, value) {
@@ -407,7 +442,8 @@ export function resizeTo(imageData, scale) {
   state.imageW = imageData.width
   state.imageH = imageData.height
   state.base = imageData
-  state.modeMap = new Uint8Array(imageData.width * imageData.height)
+  state.modeMap = new Uint16Array(imageData.width * imageData.height)
+  state.baseGen++
   state.scale = scale
   for (const r of allRectObjects()) {
     r.x = Math.min(Math.round(r.sx * scale), state.imageW - 1)
@@ -434,6 +470,10 @@ function undoOp(op) {
     case 'assign':
       for (const e of op.entries) e.rect.group = e.from
       return unionBBox(op.entries.map((e) => e.rect))
+    case 'maskstyle':
+      state.maskStyle = op.from
+      saveSettings()
+      return unionBBox(state.rects.filter((r) => r.group === MASK_GROUP))
     default:
       return null
   }
@@ -456,6 +496,10 @@ function redoOp(op) {
     case 'assign':
       for (const e of op.entries) e.rect.group = e.to
       return unionBBox(op.entries.map((e) => e.rect))
+    case 'maskstyle':
+      state.maskStyle = op.to
+      saveSettings()
+      return unionBBox(state.rects.filter((r) => r.group === MASK_GROUP))
     default:
       return null
   }

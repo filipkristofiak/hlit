@@ -2,10 +2,11 @@
 // Plain node:assert; throws (non-zero exit) on failure.
 
 import assert from 'node:assert'
-import { GROUP_COUNT, PROFILE_COUNT, buildShiftTable, stampModeMap, applyEffect } from '../renderer/effect.js'
+import { GROUP_COUNT, PROFILE_COUNT, MASK_NOISE, MASK_PIXELATE, MASK_LIGHT, MASK_DARK, MASK_PIXEL_BLOCK, GROUP_CODE_BITS, GROUP_CODE_MASK, MASK_GROUP, buildShiftTable, stampModeMap, buildMaskEntries, applyEffect } from '../renderer/effect.js'
 import {
-  state, addRect, deleteAt, setGroupProfile, setGroupSign, setGroupBinding, setProfileChannel, setProfileLinked, resetProfile,
-  undo, redo, selectOnly, toggleSelect, clearSelection, assignSelectedGroup, setThemeList, applyTheme, resizeTo, setSource
+  state, addRect, deleteAt, setGroupProfile, setGroupSign, setGroupBinding, setMaskStyle, toggleActiveSign, setProfileChannel,
+  setProfileLinked, resetProfile, undo, redo, selectOnly, toggleSelect, clearSelection, assignSelectedGroup, setThemeList,
+  applyTheme, applySettings, resizeTo, setSource
 } from '../renderer/state.js'
 
 const W = 8
@@ -53,7 +54,7 @@ setPixel(base, 6, 0, [50, 60, 70, 255])    // outside every rect
 setPixel(base, 7, 0, [10, 20, 50, 255])    // overlap case: group 0 then group 1
 
 const out = new Uint8ClampedArray(base.length)
-const modeMap = new Uint8Array(W * H)
+const modeMap = new Uint16Array(W * H)
 const shiftTable = new Int16Array((GROUP_COUNT + 1) * 3)
 
 // Profiles: 0 = (0,0,-160) default yellow, 1 = (0,0,255) extreme blue, 2 = (30,-40,200)
@@ -84,7 +85,7 @@ const rects = [
 
 const FULL = { x: 0, y: 0, w: W, h: H }
 stampModeMap(modeMap, W, rects, FULL)
-applyEffect(base, out, modeMap, W, shiftTable, FULL)
+applyEffect(base, out, modeMap, W, shiftTable, FULL, [])
 
 assert.deepStrictEqual(getPixel(out, 0, 0), [255, 255, 95, 255], 'white, profile(0,0,-160) sign+1 -> B-160')
 assert.deepStrictEqual(getPixel(out, 1, 0), [0, 0, 160, 255], 'black, profile(0,0,-160) sign-1 -> B+160')
@@ -117,7 +118,7 @@ const negRects = [
   { x: 1, y: 0, w: 1, h: 1, group: 4 }  // profile3 sign-1
 ]
 stampModeMap(modeMap, W, negRects, FULL)
-applyEffect(negBase, negOut, modeMap, W, negShiftTable, FULL)
+applyEffect(negBase, negOut, modeMap, W, negShiftTable, FULL, [])
 const p0 = getPixel(negOut, 0, 0)
 const p1 = getPixel(negOut, 1, 0)
 const baseVal = getPixel(negBase, 0, 0)
@@ -138,7 +139,7 @@ setPixel(indepBase, 0, 0, [100, 100, 100, 255])
 const indepOut = new Uint8ClampedArray(indepBase.length)
 const indepRects = [{ x: 0, y: 0, w: 1, h: 1, group: 0 }]
 stampModeMap(modeMap, W, indepRects, FULL)
-applyEffect(indepBase, indepOut, modeMap, W, indepShiftTable, FULL)
+applyEffect(indepBase, indepOut, modeMap, W, indepShiftTable, FULL, [])
 assert.deepStrictEqual(
   getPixel(indepOut, 0, 0),
   [105, 105, 105, 255],
@@ -146,6 +147,281 @@ assert.deepStrictEqual(
 )
 
 console.log('kernel: OK')
+
+// --- Masking (renderer/effect.js + renderer/state.js) -----------------------
+//
+// The security property under test: masked pixels are synthesised only from
+// the rect's geometry and a colour histogram of the whole rect, never from
+// the co-located source pixel, so two bases with the same colour multiset
+// but a different pixel arrangement must repaint byte-identical.
+
+function makeMaskBase(inkPositions) {
+  const buf = new Uint8ClampedArray(W * H * 4)
+  for (let i = 0; i < W * H; i++) {
+    const o = i * 4
+    buf[o] = 0
+    buf[o + 1] = 255
+    buf[o + 2] = 255
+    buf[o + 3] = 255
+  }
+  for (const [x, y] of inkPositions) {
+    const o = (y * W + x) * 4
+    buf[o] = 0
+    buf[o + 1] = 0
+    buf[o + 2] = 0
+    buf[o + 3] = 255
+  }
+  return buf
+}
+
+function getMaskPixel(buf, x, y) {
+  const o = (y * W + x) * 4
+  return [buf[o], buf[o + 1], buf[o + 2], buf[o + 3]]
+}
+
+const maskShiftGroups = Array.from({ length: GROUP_COUNT }, () => ({ profile: 0, sign: 1 }))
+const maskShiftTable = new Int16Array((GROUP_COUNT + 1) * 3)
+buildShiftTable(profiles, maskShiftGroups, maskShiftTable)
+
+function runMask(rects, buf, gen, style) {
+  const mm = new Uint16Array(W * H)
+  stampModeMap(mm, W, rects, FULL)
+  const masks = buildMaskEntries(rects, buf, W, H, FULL, gen, style)
+  const outBuf = new Uint8ClampedArray(W * H * 4)
+  applyEffect(buf, outBuf, mm, W, maskShiftTable, FULL, masks)
+  return outBuf
+}
+
+const maskBaseA = makeMaskBase([[1, 0], [2, 1]])
+
+// 1. Determinism: two independent runs over the same rect/gen are byte-identical.
+const outDetA = runMask([{ x: 0, y: 0, w: 4, h: 2, group: MASK_GROUP }], maskBaseA, 1, MASK_NOISE)
+const outDetB = runMask([{ x: 0, y: 0, w: 4, h: 2, group: MASK_GROUP }], maskBaseA, 1, MASK_NOISE)
+assert.deepStrictEqual(outDetA, outDetB, 'two independent mask runs over the same rect/gen are byte-identical')
+
+// 2. Content independence: same colour multiset, different pixel arrangement -> identical output.
+const maskBaseB = makeMaskBase([[0, 1], [3, 0]])
+const outDetC = runMask([{ x: 0, y: 0, w: 4, h: 2, group: MASK_GROUP }], maskBaseB, 1, MASK_NOISE)
+for (let y = 0; y < 2; y++) {
+  for (let x = 0; x < 4; x++) {
+    assert.deepStrictEqual(
+      getMaskPixel(outDetC, x, y), getMaskPixel(outDetA, x, y),
+      `content-independent: pixel (${x},${y}) matches despite a different ink arrangement`
+    )
+  }
+}
+
+// 3. Confinement: pixels outside the rect (whether or not inside dirty) are untouched.
+assert.deepStrictEqual(getMaskPixel(outDetA, 6, 0), getMaskPixel(maskBaseA, 6, 0), 'a pixel outside every rect is byte-identical to base')
+assert.deepStrictEqual(getMaskPixel(outDetA, 5, 0), getMaskPixel(maskBaseA, 5, 0), 'a pixel outside the rect but inside dirty is byte-identical to base')
+
+// 4. Light: every pixel is the fixed light grey, opaque.
+const outLight = runMask([{ x: 0, y: 0, w: 4, h: 2, group: MASK_GROUP }], maskBaseA, 1, MASK_LIGHT)
+for (let y = 0; y < 2; y++) {
+  for (let x = 0; x < 4; x++) {
+    assert.deepStrictEqual(getMaskPixel(outLight, x, y), [232, 232, 232, 255], `light mask pixel (${x},${y}) is the fixed light grey`)
+  }
+}
+
+// 5. Dark: every pixel is the fixed dark grey, opaque.
+const outDark = runMask([{ x: 0, y: 0, w: 4, h: 2, group: MASK_GROUP }], maskBaseA, 1, MASK_DARK)
+for (let y = 0; y < 2; y++) {
+  for (let x = 0; x < 4; x++) {
+    assert.deepStrictEqual(getMaskPixel(outDark, x, y), [24, 24, 24, 255], `dark mask pixel (${x},${y}) is the fixed dark grey`)
+  }
+}
+
+// 5b. Pixelate: block-uniform mosaic, NOT content-independent (that is the
+// documented tradeoff for this style). Larger fixture so the mosaic has more
+// than one cell: a cyan buffer with a black ink square inside cell 0 only.
+const PW = MASK_PIXEL_BLOCK * 2 + 8
+const PH = MASK_PIXEL_BLOCK + 4
+
+function makePixelateBase() {
+  const buf = new Uint8ClampedArray(PW * PH * 4)
+  for (let i = 0; i < PW * PH; i++) {
+    const o = i * 4
+    buf[o] = 0
+    buf[o + 1] = 255
+    buf[o + 2] = 255
+    buf[o + 3] = 255
+  }
+  for (let y = 2; y < 6; y++) {
+    for (let x = 2; x < 6; x++) {
+      const o = (y * PW + x) * 4
+      buf[o] = 0
+      buf[o + 1] = 0
+      buf[o + 2] = 0
+      buf[o + 3] = 255
+    }
+  }
+  return buf
+}
+
+function getPixelateRGBA(buf, x, y) {
+  const o = (y * PW + x) * 4
+  return [buf[o], buf[o + 1], buf[o + 2], buf[o + 3]]
+}
+
+function runPixelate(rect, gen) {
+  const dirty = { x: 0, y: 0, w: PW, h: PH }
+  const mm = new Uint16Array(PW * PH)
+  stampModeMap(mm, PW, [rect], dirty)
+  const entries = buildMaskEntries([rect], pixelateBase, PW, PH, dirty, gen, MASK_PIXELATE)
+  const outBuf = new Uint8ClampedArray(PW * PH * 4)
+  applyEffect(pixelateBase, outBuf, mm, PW, maskShiftTable, dirty, entries)
+  return outBuf
+}
+
+const pixelateBase = makePixelateBase()
+const pixelateRect = { x: 0, y: 0, w: MASK_PIXEL_BLOCK * 2, h: MASK_PIXEL_BLOCK, group: MASK_GROUP }
+const outPixelate = runPixelate(pixelateRect, 1)
+
+// (a) block uniformity: every pixel inside a cell equals every other pixel in that cell.
+const cell0 = getPixelateRGBA(outPixelate, 0, 0)
+for (let y = 0; y < MASK_PIXEL_BLOCK; y++) {
+  for (let x = 0; x < MASK_PIXEL_BLOCK; x++) {
+    assert.deepStrictEqual(getPixelateRGBA(outPixelate, x, y), cell0, `pixelate cell 0 pixel (${x},${y}) matches cell 0's fill`)
+  }
+}
+const cell1 = getPixelateRGBA(outPixelate, MASK_PIXEL_BLOCK, 0)
+for (let y = 0; y < MASK_PIXEL_BLOCK; y++) {
+  for (let x = MASK_PIXEL_BLOCK; x < MASK_PIXEL_BLOCK * 2; x++) {
+    assert.deepStrictEqual(getPixelateRGBA(outPixelate, x, y), cell1, `pixelate cell 1 pixel (${x},${y}) matches cell 1's fill`)
+  }
+}
+
+// (b) the inked cell differs from the pure-cyan cell.
+assert.notDeepStrictEqual(cell0, cell1, 'the cell containing ink differs from the pure-cyan cell')
+
+// (c) both source colours in cell 0 (cyan [0,255,255] and black [0,0,0]) have
+// R=0, so the mean R stays 0; the black ink pulls the mean G/B down from 255.
+assert.ok(cell0[0] === 0, 'cell 0 R channel stays within the source range (cyan and black both have R=0)')
+assert.ok(cell0[1] < 255 && cell0[2] < 255, 'cell 0 G/B channels are pulled below 255 by the black ink')
+assert.deepStrictEqual(cell1, [0, 255, 255, 255], 'cell 1 (no ink) is exactly the pure-cyan source colour')
+
+// (d) opaque alpha.
+assert.strictEqual(cell0[3], 255, 'pixelate alpha is opaque')
+assert.strictEqual(cell1[3], 255, 'pixelate alpha is opaque')
+
+// (e) a second run over a fresh rect object with the same gen is byte-identical.
+const pixelateRect2 = { x: 0, y: 0, w: MASK_PIXEL_BLOCK * 2, h: MASK_PIXEL_BLOCK, group: MASK_GROUP }
+const outPixelate2 = runPixelate(pixelateRect2, 1)
+assert.deepStrictEqual(outPixelate2, outPixelate, 'a second pixelate run over a fresh rect object with the same gen is byte-identical')
+
+console.log('mask pixelate: OK')
+
+// 6. Noise: not flat, not the source, and every pixel lies within the sampled palette.
+const noiseRect = { x: 0, y: 0, w: 4, h: 2, group: MASK_GROUP }
+const noiseModeMap = new Uint16Array(W * H)
+stampModeMap(noiseModeMap, W, [noiseRect], FULL)
+const noiseEntries = buildMaskEntries([noiseRect], maskBaseA, W, H, FULL, 2, MASK_NOISE)
+const outNoise = new Uint8ClampedArray(W * H * 4)
+applyEffect(maskBaseA, outNoise, noiseModeMap, W, maskShiftTable, FULL, noiseEntries)
+const noiseStats = noiseEntries[0].stats
+const seenNoise = new Set()
+for (let y = 0; y < 2; y++) {
+  for (let x = 0; x < 4; x++) {
+    const [r, g, b] = getMaskPixel(outNoise, x, y)
+    seenNoise.add(`${r},${g},${b}`)
+    let within = false
+    for (let k = 0; k < noiseStats.count; k++) {
+      if (Math.abs(r - noiseStats.palette[k * 3]) <= 16 &&
+          Math.abs(g - noiseStats.palette[k * 3 + 1]) <= 16 &&
+          Math.abs(b - noiseStats.palette[k * 3 + 2]) <= 16) {
+        within = true
+        break
+      }
+    }
+    assert.ok(within, `noise pixel (${x},${y}) = [${r},${g},${b}] lies within +-16 of a sampled palette entry`)
+  }
+}
+assert.ok(seenNoise.size >= 2, 'noise mask yields at least two distinct RGB values')
+
+// 7. Mask + highlight: a mask hides the pixels underneath, and an overlapping
+// highlight tints the synthesised mask pixel instead of being swallowed.
+const overlapMaskRect = { x: 0, y: 0, w: 4, h: 2, group: MASK_GROUP }
+const overlapMaskRect2 = { x: 0, y: 0, w: 4, h: 2, group: MASK_GROUP }
+const overlapHighlightRect = { x: 2, y: 0, w: 4, h: 2, group: 3 }
+
+const orderModeMapA = new Uint16Array(W * H)
+stampModeMap(orderModeMapA, W, [overlapMaskRect, overlapHighlightRect], FULL)
+assert.strictEqual(orderModeMapA[2], (1 << GROUP_CODE_BITS) | 4,
+  'an overlapped pixel carries both the mask slot (rect 0) and the highlight code (group 3)')
+assert.strictEqual(orderModeMapA[0], 1 << GROUP_CODE_BITS,
+  'a mask-only pixel carries no highlight code')
+assert.strictEqual(orderModeMapA[5] & GROUP_CODE_MASK, 4,
+  'a highlight-only pixel keeps its group code')
+assert.strictEqual(orderModeMapA[5] >>> GROUP_CODE_BITS, 0,
+  'a highlight-only pixel carries no mask slot')
+
+const outMaskHl = runMask([overlapMaskRect, overlapHighlightRect], maskBaseA, 1, MASK_LIGHT)
+assert.deepStrictEqual(getMaskPixel(outMaskHl, 2, 0), [232, 232, 72, 255],
+  'the overlap is the light-grey mask with the group shift (0,0,-160) applied on top')
+assert.deepStrictEqual(getMaskPixel(outMaskHl, 0, 0), [232, 232, 232, 255],
+  'the mask-only part of the rect is the untinted fixed light grey')
+assert.deepStrictEqual(getMaskPixel(outMaskHl, 5, 0), [0, 255, 95, 255],
+  'the highlight-only part still shifts the source pixel')
+
+const outHlMask = runMask([overlapHighlightRect, overlapMaskRect], maskBaseA, 1, MASK_LIGHT)
+assert.deepStrictEqual(outHlMask, outMaskHl,
+  'draw order does not matter: mask-then-highlight and highlight-then-mask agree byte for byte')
+
+const orderModeMapC = new Uint16Array(W * H)
+stampModeMap(orderModeMapC, W, [overlapMaskRect, overlapMaskRect2, overlapHighlightRect], FULL)
+assert.strictEqual(orderModeMapC[2], (2 << GROUP_CODE_BITS) | 4,
+  'mask-over-mask: the later mask takes the slot, the highlight code survives')
+
+console.log('mask kernel: OK')
+
+// 8. State level: the M group's style, undo/redo, selection reassignment into
+// M, and toggleActiveSign being a no-op while M is active.
+state.imageW = W
+state.imageH = H
+state.rects = []
+state.selected = new Set()
+state.active = 0
+state.undo = []
+state.redo = []
+state.groups = Array.from({ length: GROUP_COUNT }, () => ({ profile: 0, sign: 1 }))
+state.maskStyle = MASK_NOISE
+addRect({ x: 0, y: 0, w: 2, h: 2, group: MASK_GROUP })
+
+const dirtyMask = setMaskStyle(MASK_DARK)
+assert.ok(dirtyMask, 'setMaskStyle returns a dirty bbox covering M-group rects')
+assert.strictEqual(state.maskStyle, MASK_DARK, 'setMaskStyle updates state.maskStyle')
+
+const undoLenBeforeNoop = state.undo.length
+assert.strictEqual(setMaskStyle(MASK_DARK), null, 'repicking the same style is a no-op')
+assert.strictEqual(state.undo.length, undoLenBeforeNoop, 'the no-op repick pushes no undo entry')
+
+const dirtyMaskUndo = undo()
+assert.ok(dirtyMaskUndo, 'undo must return a dirty bbox')
+assert.strictEqual(state.maskStyle, MASK_NOISE, 'undo restores the previous mask style')
+
+const dirtyMaskRedo = redo()
+assert.ok(dirtyMaskRedo, 'redo must return a dirty bbox')
+assert.strictEqual(state.maskStyle, MASK_DARK, 'redo reapplies the mask style')
+
+const colorRect0 = { x: 4, y: 0, w: 1, h: 1, group: 0 }
+addRect(colorRect0)
+selectOnly(colorRect0)
+const dirtyAssignM = assignSelectedGroup(MASK_GROUP)
+assert.ok(dirtyAssignM, 'assignSelectedGroup(MASK_GROUP) returns a dirty bbox')
+assert.strictEqual(colorRect0.group, MASK_GROUP, 'the selected rect moves into the M group')
+assert.strictEqual(state.active, MASK_GROUP, 'assignSelectedGroup sets the active group to M')
+
+const dirtyAssignMUndo = undo()
+assert.ok(dirtyAssignMUndo, 'undo must return a dirty bbox')
+assert.strictEqual(colorRect0.group, 0, 'undo restores the rect to its prior group')
+
+state.active = MASK_GROUP
+const groupsBeforeToggle = JSON.stringify(state.groups)
+assert.strictEqual(toggleActiveSign(), null, 'toggleActiveSign on the M group is a no-op')
+assert.strictEqual(JSON.stringify(state.groups), groupsBeforeToggle, 'toggleActiveSign on M leaves state.groups untouched')
+clearSelection()
+
+console.log('mask group: OK')
 
 // --- State-level checks (renderer/state.js) ---------------------------------
 
@@ -155,12 +431,13 @@ setPixel(sBase, 1, 0, [150, 150, 150, 255]) // group 1, profile 0 (opposite sign
 setPixel(sBase, 2, 0, [77, 88, 99, 255])    // group 2, profile 1 (delete target)
 
 const sOut = new Uint8ClampedArray(sBase.length)
-const sModeMap = new Uint8Array(W * H)
+const sModeMap = new Uint16Array(W * H)
 
 function sRepaint(dirty) {
   stampModeMap(sModeMap, W, state.rects, dirty)
+  const masks = buildMaskEntries(state.rects, sBase, W, H, dirty, state.baseGen, state.maskStyle)
   const scratch = new Uint8ClampedArray(dirty.w * dirty.h * 4)
-  applyEffect(sBase, scratch, sModeMap, W, state.shiftTable, dirty)
+  applyEffect(sBase, scratch, sModeMap, W, state.shiftTable, dirty, masks)
   for (let y = 0; y < dirty.h; y++) {
     for (let x = 0; x < dirty.w; x++) {
       const s = (y * dirty.w + x) * 4
@@ -435,6 +712,59 @@ assert.ok(saved.every((s) => s.theme.locked === false), 'every written theme is 
 delete globalThis.hl
 
 console.log('themes: OK')
+
+// 9. Settings: maskStyle persists through applySettings (v4), an invalid
+// maskStyle falls back to MASK_NOISE, and a v3 file's per-group mask flag
+// seeds maskStyle while its theme pointer still resolves after the version bump.
+await applySettings({
+  version: 4,
+  theme: 'default',
+  groups: [
+    { profile: 0, sign: 1 },
+    { profile: 1, sign: 1 },
+    { profile: 2, sign: -1 },
+    { profile: 3, sign: 1 },
+    { profile: 4, sign: -1 }
+  ],
+  maskStyle: MASK_LIGHT
+})
+assert.strictEqual(state.maskStyle, MASK_LIGHT, 'applySettings loads maskStyle from a v4 file')
+assert.strictEqual(state.groups[0].profile, 0, 'v4 group bindings load their profile')
+assert.strictEqual(state.groups[0].sign, 1, 'v4 group bindings load their sign')
+assert.strictEqual(state.groups[0].mask, undefined, 'v4 group bindings carry no mask field')
+
+await applySettings({
+  version: 4,
+  theme: 'default',
+  groups: [
+    { profile: 0, sign: 1 },
+    { profile: 1, sign: 1 },
+    { profile: 2, sign: -1 },
+    { profile: 3, sign: 1 },
+    { profile: 4, sign: -1 }
+  ],
+  maskStyle: 9
+})
+assert.strictEqual(state.maskStyle, MASK_NOISE, 'an out-of-range maskStyle falls back to MASK_NOISE')
+
+await applySettings({
+  version: 3,
+  theme: 'default',
+  groups: [
+    { profile: 0, sign: 1, mask: 2 },
+    { profile: 1, sign: 1, mask: 0 },
+    { profile: 2, sign: -1, mask: 0 },
+    { profile: 3, sign: 1, mask: 0 },
+    { profile: 4, sign: -1, mask: 0 }
+  ]
+})
+assert.strictEqual(state.groups[0].profile, 0, 'v3 groups load their profile, not the defaults')
+assert.strictEqual(state.groups[0].sign, 1, 'v3 groups load their sign, not the defaults')
+assert.strictEqual(state.maskStyle, 2, 'v3 legacy: maskStyle seeds from the first group carrying a mask flag')
+assert.strictEqual(state.groups[0].mask, undefined, 'the legacy per-group mask field is dropped from state.groups')
+assert.strictEqual(state.theme.id, 'default', 'a v3 theme pointer still resolves after the version bump')
+
+console.log('mask: OK')
 
 // --- Resize keeps rect geometry drift-free ----------------------------------
 

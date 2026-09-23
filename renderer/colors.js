@@ -23,3 +23,12 @@ export function sideColor(shift, sign) {
 export function bindingColor(profile, sign) {
   return sideColor(sign === 1 ? profile.pos : profile.neg, sign)
 }
+
+// Mask row swatches: index 0 is unused (style 0 = unmasked, never shown here).
+const MASK_COLORS = ['transparent', '#8a8a8a', '#7a7a7a', '#e6e6e6', '#1a1a1a']
+
+/** Flat swatch colour for a mask style (1 noise, 2 pixelate, 3 light, 4 dark);
+ *  also used as the status bar's mode-button underline when a group is masked. */
+export function maskColor(style) {
+  return MASK_COLORS[style] || 'transparent'
+}
