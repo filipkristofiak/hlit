@@ -6,6 +6,9 @@ versions — run the latest tag, or `main`.
 
 ## Unreleased
 
+- Windows: `scripts/create-shortcut.ps1` adds a Start Menu entry and a
+  `Ctrl+Alt+H` launch hotkey (see `docs/running.md`).
+
 ## 0.2.0 — 2026-09-23
 
 - Mask group (`M`): noise, pixelate, light and dark styles; overlapping
