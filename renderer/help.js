@@ -15,7 +15,7 @@ const SHORTCUTS = [
   [K.cycleGroup, 'Next / previous active group'],
   ['I', 'Flip the active group between light and dark'],
   ['M', 'Mask group \u2014 make it active, or move the selection into it'],
-  ['D', 'Draw group \u2014 drag an outline rectangle or an arrow'],
+  ['D', 'Draw group \u2014 drag an outline rectangle, a line or an arrow'],
   ['A', 'Annotate group \u2014 drag a box, then type'],
   ['x / Delete', 'Remove the rectangle under the cursor'],
   ['Esc', 'Clear the selection, or cancel a drag'],
@@ -26,7 +26,8 @@ const SHORTCUTS = [
   ['in picker: j k \u2191 \u2193', 'Move between the light and dark rows'],
   ['in picker: g / G', 'First / last profile'],
   ['in the mask picker: 1 \u2013 4', 'Noise / pixelate / light / dark'],
-  ['in the draw picker: 1 \u2013 5', 'Colour for new shapes; the row picks rectangle or arrow'],
+  ['in the draw picker: 1 \u2013 3, then 1 \u2013 5', 'Shape (rectangle / line / arrow), then colour'],
+  ['in draw/text pickers: E / shift-click', 'Edit that colour'],
   ['in a text box: Enter', 'Commit the text (shift+Enter for a new line)'],
   ['in a text box: Esc', 'Cancel the edit'],
   ['click a text box', 'Re-open its editor'],
@@ -38,14 +39,14 @@ const SHORTCUTS = [
   ['in themes: j k \u2191 \u2193', 'Move between themes'],
   ['in themes: g / G', 'First / last theme'],
   ['in themes: Enter', 'Load the highlighted palette'],
-  ['in editor: Esc', 'Close the vectors panel, back to the picker'],
+  ['in editor: Esc', 'Close the vectors or colour panel, back to the picker'],
   ['q / Esc', 'Close any popup'],
   ['?', 'Toggle this help']
 ]
 
 const THEME_NOTES = [
   'A theme is a palette file in ~/.config/hlit/themes/ \u2014 T lists every one found there.',
-  'The shipped Default theme is locked: the first profile edit forks it to an unlocked copy, which becomes active.',
+  'The shipped Default theme is locked: the first profile or colour edit forks it to an unlocked copy, which becomes active.',
   'An unlocked theme is written in place as you edit; settings.json only records which theme is active.'
 ]
 
@@ -57,8 +58,8 @@ const MASKING_NOTES = [
 ]
 
 const DRAWING_NOTES = [
-  'D and A draw on top of the pixels instead of shifting them: a D rectangle is a 2 px border with an untouched interior, an arrow points at the corner where the drag ended, and A renders text inside the box you dragged.',
-  'The picker (p, or right-click the swatch) sets the shape and colour for the *next* shape only \u2014 shapes already on the image keep what they were drawn with.',
+  'D and A draw on top of the pixels instead of shifting them: a D rectangle is a 2 px border with an untouched interior, a line or arrow runs from where the drag started to where it ended (the arrow points at the end), and A renders text inside the box you dragged.',
+  'The picker (p, or right-click the swatch) sets the shape and colour slot for the *next* shape. Colours belong to the theme: editing one (or switching theme) recolours every shape and text box using that slot.',
   'Shapes and text cannot be moved between groups: 1\u20135 and M reassign highlights, D and A only switch the active group.'
 ]
 

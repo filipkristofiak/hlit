@@ -6,6 +6,14 @@ versions — run the latest tag, or `main`.
 
 ## Unreleased
 
+## 0.4.0 — 2026-10-03
+
+- Draw picker: choose rectangle, line, or arrow, then a colour; text and
+  drawing share five theme-editable colour slots (red, yellow, blue, white,
+  black). Theme edits recolour existing shapes and text.
+- Theme format v2 adds `drawColors` (v1 files still load); settings v6
+  migrates the former red/yellow/green/blue/white indices. Previously
+  saved green drawing and text selections now load as red.
 - macOS: the Spotlight launcher stages an Electron app bundle before
   replacing the old one, and runs as `com.kristofiak.hlit` instead of Electron.
 - macOS: rerun the installer after Electron upgrades; replace Dock pins

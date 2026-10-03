@@ -54,9 +54,15 @@ export function chooseMask(style) {
   render(doc.setMaskStyle(style), false)
 }
 
-/** Draw picker cell: shape + colour for the next drawn shape. */
-export function chooseDrawStyle(shape, colorIndex) {
-  doc.setDrawStyle(shape, colorIndex)
+/** Draw picker shape for the next drawn shape. */
+export function chooseDrawShape(shape) {
+  doc.setDrawShape(shape)
+  render(null, false)
+}
+
+/** Draw picker colour slot for the next drawn shape. */
+export function chooseDrawColor(colorIndex) {
+  doc.setDrawColor(colorIndex)
   render(null, false)
 }
 
@@ -138,6 +144,14 @@ export function setProfileLinked(profileIndex, linked) {
 
 export function resetProfile(profileIndex) {
   render(doc.resetProfile(profileIndex), false)
+}
+
+export function setDrawPaletteColor(index, hex) {
+  render(doc.setDrawPaletteColor(index, hex), false)
+}
+
+export function resetDrawPaletteColor(index) {
+  render(doc.resetDrawPaletteColor(index), false)
 }
 
 /** Theme picker row: the document adopts that theme's palette. */

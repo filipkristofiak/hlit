@@ -4,7 +4,7 @@ import { state } from './state.js'
 import * as cmd from './commands.js'
 import { openProfilePicker } from './picker.js'
 import { GROUP_TOTAL, MASK_GROUP, DRAW_GROUP, ANNOT_GROUP, isColorGroup, isVectorGroup } from './effect.js'
-import { bindingColor, maskColor, annotColor } from './colors.js'
+import { bindingColor, maskColor, drawColorAt } from './colors.js'
 
 const statusEl = document.getElementById('status')
 
@@ -16,8 +16,8 @@ let info = null
 
 function groupColor(groupIndex) {
   if (groupIndex === MASK_GROUP) return maskColor(state.maskStyle)
-  if (groupIndex === DRAW_GROUP) return annotColor(state.drawColor)
-  if (groupIndex === ANNOT_GROUP) return annotColor(state.textColor)
+  if (groupIndex === DRAW_GROUP) return drawColorAt(state.drawColors, state.drawColor)
+  if (groupIndex === ANNOT_GROUP) return drawColorAt(state.drawColors, state.textColor)
   const g = state.groups[groupIndex]
   return bindingColor(state.profiles[g.profile], g.sign)
 }

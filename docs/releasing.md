@@ -22,29 +22,28 @@ app version. Do not conflate them with a release.
 
 ## Cutting a release
 
-From `main`, with a clean tree:
+Prepare a release pull request from a feature branch:
+
+1. Move the bullets under `## Unreleased` into a new
+   `## X.Y.Z — YYYY-MM-DD` section in `CHANGELOG.md`.
+2. Bump `package.json` and `package-lock.json` together (for example,
+   `npm version minor --no-git-tag-version`). Run `npm run check` and
+   `node scripts/release-notes.mjs vX.Y.Z` before committing.
+3. Push the branch and open a pull request. Do **not** tag before the
+   release commit lands on `main`.
+
+After the pull request is merged, on an up-to-date, clean `main`:
 
 ```sh
-# 1. Move the bullets under "## Unreleased" into a new
-#    "## X.Y.Z — YYYY-MM-DD" section in CHANGELOG.md, then commit it.
-git commit -am "Changelog for X.Y.Z"
-
-# 2. Bump package.json + package-lock.json, commit, and create the vX.Y.Z tag.
-npm version minor -m "Release v%s"        # or `patch` for a fix-only release
-
-# 3. Push the commits and the tag; the tag push runs the release workflow.
-git push origin main --follow-tags
+git tag -a vX.Y.Z -m "Release vX.Y.Z"
+git push origin main vX.Y.Z
 ```
 
-Notes:
-
-- The CHANGELOG edit must come *before* `npm version`. The release workflow
-  reads the CHANGELOG at the tagged commit; a tag pushed without a matching
-  section fails the job (`scripts/release-notes.mjs`) and no release is
-  published.
-- `npm version minor` creates the `v`-prefixed tag itself — do not also run
-  `git tag`.
-- Watch it: `gh run watch`, then `gh release view vX.Y.Z`.
+The tag push runs the release workflow. The workflow reads the changelog
+at the tagged commit; a missing matching section fails the job and no
+release is published. Watch it with `gh run watch`, then confirm with
+`gh release view vX.Y.Z`. Delete the merged feature branch remotely and
+locally after switching to `main`.
 
 ## If a tag's CHANGELOG section is missing or the checks fail
 

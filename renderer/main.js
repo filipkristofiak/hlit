@@ -7,6 +7,7 @@ import * as cmd from './commands.js'
 import { fit, paint, toImage, drawOverlay, exportPng, rasterizeSource } from './view.js'
 import { init as initStatusbar, refresh as statusbarRefresh } from './statusbar.js'
 import { isProfileEditorOpen, closeProfileEditor } from './profile-editor.js'
+import { isDrawColorEditorOpen, closeDrawColorEditor } from './draw-color-editor.js'
 import { openProfilePicker, isProfilePickerOpen, handleProfilePickerKey, refreshProfilePicker } from './picker.js'
 import { openThemePicker, isThemePickerOpen, handleThemePickerKey, refreshThemePicker } from './theme-picker.js'
 import { openHelp, closeHelp, isHelpOpen, scrollHelp } from './help.js'
@@ -193,7 +194,10 @@ function ctrlCommand(e) {
 window.addEventListener('keydown', (e) => {
   // A focused field keeps every native editing key, Ctrl+C/Ctrl+V included.
   if ((e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) && !isResizeOpen()) {
-    if (e.key === 'Escape') closeProfileEditor()
+    if (e.key === 'Escape') {
+      closeProfileEditor()
+      closeDrawColorEditor()
+    }
     return
   }
 
@@ -212,6 +216,11 @@ window.addEventListener('keydown', (e) => {
 
   if (isProfileEditorOpen()) {
     if (e.key === 'Escape' || e.key === 'q' || e.key === 'Q') closeProfileEditor()
+    return
+  }
+
+  if (isDrawColorEditorOpen()) {
+    if (e.key === 'Escape' || e.key === 'q' || e.key === 'Q') closeDrawColorEditor()
     return
   }
 

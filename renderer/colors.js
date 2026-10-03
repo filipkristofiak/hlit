@@ -33,12 +33,19 @@ export function maskColor(style) {
   return MASK_COLORS[style] || 'transparent'
 }
 
-// D/A palette. Fixed five, one per picker column; index 0 (red) is the default.
-const ANNOT_COLORS = ['#ff3b30', '#ffcc00', '#34c759', '#0a84ff', '#ffffff']
-export const ANNOT_COLOR_COUNT = ANNOT_COLORS.length
-export const ANNOT_COLOR_LABELS = ['red', 'yellow', 'green', 'blue', 'white']
+/** CSS colour for a D/A slot; invalid indices fall back to slot 0. */
+export function drawColorAt(colors, index) {
+  return colors[index] || colors[0]
+}
 
-/** CSS colour for a D/A colour index; out-of-range falls back to red. */
-export function annotColor(i) {
-  return ANNOT_COLORS[i] || ANNOT_COLORS[0]
+export function hexToRgb(hex) {
+  return {
+    r: parseInt(hex.slice(1, 3), 16),
+    g: parseInt(hex.slice(3, 5), 16),
+    b: parseInt(hex.slice(5, 7), 16)
+  }
+}
+
+export function rgbToHex({ r, g, b }) {
+  return `#${[r, g, b].map((v) => v.toString(16).padStart(2, '0')).join('')}`
 }

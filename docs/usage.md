@@ -35,6 +35,21 @@ picker with `E` or shift-click on a light/dark cell, which opens the
 slider/numeric panel: per-channel R/G/B for both sides, a "Mirror dark side"
 checkbox, *Reset*, and *Close*.
 
+## Drawing and text
+
+`d` selects the Draw group. Drag to create an outline rectangle, a line, or
+an arrow; the line/arrow runs from the start of the drag to its end. Open
+its picker with `p`: choose a Shape (`1`–`3`), then a Colour (`1`–`5`).
+Choosing a shape leaves the picker open on the colour row. `a` selects
+the Annotate group: drag a text box and type; its picker has the same five
+colour slots. The default colours are red, yellow, blue, white, black.
+
+In the D/A colour row, `E` or shift-click opens an RGB editor with sliders,
+number inputs, and Reset. The slots belong to the active theme: edits and
+theme changes recolour all existing drawings and text boxes using that
+slot. Shape and colour picks set the style for the next drawing; editing a
+locked theme forks it to an unlocked copy. Palette edits are not undoable.
+
 ## Masking
 
 `m`/`M` selects the `M` group — makes it active, or (with a selection)
@@ -116,6 +131,8 @@ export at the currently active scale (WYSIWYG).
 | in pickers: `Enter`, digits | Apply the highlighted entry / take one directly |
 | in the binding picker: `E` / shift-click on a light/dark cell | Edit that profile's vectors |
 | in the mask picker: `1`–`4` | Noise / pixelate / light / dark |
+| in the draw picker: `1`–`3`, then `1`–`5` | Choose rectangle / line / arrow, then colour |
+| in draw/text pickers: `E` / shift-click a colour | Edit that theme colour |
 
 On Windows/Linux the modifier is spelled `Ctrl` (`Ctrl+V` / `Ctrl+C` /
 `Ctrl+S`, `Ctrl+Z` / `Ctrl+Shift+Z`, `Ctrl+Shift+R` for resize) and View ▸
@@ -129,8 +146,9 @@ Settings and palettes live in `~/.config/hlit/` (`settings.json` +
 if the config directory is unwritable the app keeps running with
 in-memory values. `XDG_CONFIG_HOME` still wins when set to an absolute
 path. `settings.json` is
-`{ "version": 4, "theme": "<id>", "groups": [5 × {profile,sign}], "maskStyle": 1-4 }`
-— the palette itself is not stored there.
+`{ "version": 6, "theme": "<id>", "groups": [5 × {profile,sign}], "maskStyle": 1-4, "drawShape": "rect"|"line"|"arrow", "drawColor": 0-4, "textColor": 0-4 }`
+— the palettes themselves live in theme files. Version 5 D/A colour
+indices are migrated (green → red; blue and white keep their colours).
 
 ## Undo/redo
 

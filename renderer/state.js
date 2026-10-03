@@ -2,11 +2,11 @@
 //
 // Rect: { x, y, w, h, group }       integer image-space pixels, w>=1, h>=1
 //   group is 0..GROUP_COUNT-1 (colour), MASK_GROUP (the 6th group, always masked),
-//   DRAW_GROUP (vector outline rectangle or arrow) or ANNOT_GROUP (vector text box).
-//   Draw rect adds: { sx, sy, sw, sh, shape: 'rect'|'arrow', color: 0..4, flipX, flipY }
-//   Annotate rect adds: { sx, sy, sw, sh, text: string, color: 0..4 }
-//   flipX/flipY record which corner an arrow's drag started from — the one piece of
-//   arrow state a normalised bbox cannot express. Resizing re-derives x/y/w/h from
+//   DRAW_GROUP (vector outline rectangle, line or arrow) or ANNOT_GROUP (vector text box).
+//   Draw rect adds: { sx, sy, sw, sh, shape: 'rect'|'line'|'arrow', color: slot index 0..DRAW_COLOR_COUNT-1, flipX, flipY }
+//   Annotate rect adds: { sx, sy, sw, sh, text: string, color: slot index 0..DRAW_COLOR_COUNT-1 }
+//   flipX/flipY record which corner a line or arrow's drag started from — the one
+//   direction a normalised bbox cannot express. Resizing re-derives x/y/w/h from
 //   sx/sy/sw/sh; flips, shape, color and text are untouched by a resize.
 // Profile: { pos:{r,g,b}, neg:{r,g,b}, linked }
 //   pos/neg each integers -255..255; linked true means neg is kept at -pos
@@ -17,18 +17,21 @@
 //   | { t:'assign', entries: [{ rect, from, to }] }   bulk rect.group reassignment
 //   | { t:'maskstyle', from, to }   the M group's mask style
 //   | { t:'text', rect, from, to }   a committed edit of an A rect's string
-// Theme: { id, name, locked, builtin, profiles }   palette of PROFILE_COUNT profiles; id = theme filename stem
+// Theme: { id, name, locked, builtin, profiles, drawColors }   theme palette; id = theme filename stem
 
 import {
   GROUP_COUNT, MASK_GROUP, PROFILE_COUNT, DEFAULT_SHIFT, MASK_NOISE, MASK_STYLE_COUNT,
   isColorGroup, isVectorGroup, buildShiftTable
 } from './effect.js'
-import { THEME_VERSION, isValidProfile, copyProfiles, normalizeTheme, nextForkId, nextForkName } from './themes.js'
-import { annotationPad } from './annotations.js'
-import { ANNOT_COLOR_COUNT } from './colors.js'
+import {
+  THEME_VERSION, DRAW_COLOR_COUNT, DEFAULT_DRAW_COLORS, copyDrawColors, isValidHexColor,
+  isValidProfile, copyProfiles, normalizeTheme, nextForkId, nextForkName
+} from './themes.js'
+import { annotationPad, DRAW_SHAPES } from './annotations.js'
 
 const UNDO_CAP = 100
-const SETTINGS_VERSION = 5
+const SETTINGS_VERSION = 6
+const LEGACY_DRAW_COLOR_MAP = [0, 1, 0, 2, 3]
 const DEFAULT_THEME_ID = 'default'
 const SAVE_DEBOUNCE_MS = 150
 
@@ -73,6 +76,7 @@ export const state = {
   drawColor: 0,
   // Colour for the *next* A text box.
   textColor: 0,
+  drawColors: copyDrawColors(DEFAULT_DRAW_COLORS),
   undo: [],
   redo: [],
   // The pristine clipboard bytes every resize re-decodes from, and the scale
@@ -117,6 +121,10 @@ function unionBBox(rects) {
   return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 }
 }
 
+function repaintBBox(rects) {
+  return unionBBox(rects.map(dirtyBBox).filter(Boolean))
+}
+
 function pushUndo(op) {
   state.undo.push(op)
   if (state.undo.length > UNDO_CAP) state.undo.shift()
@@ -136,6 +144,10 @@ function rectsUsingProfile(profileIndex) {
   return state.rects.filter((r) => isColorGroup(r.group) && state.groups[r.group].profile === profileIndex)
 }
 
+function vectorRectsUsingColor(index) {
+  return state.rects.filter((r) => isVectorGroup(r.group) && r.color === index)
+}
+
 function isValidGroup(g) {
   return g && typeof g === 'object' &&
     Number.isInteger(g.profile) && g.profile >= 0 && g.profile < PROFILE_COUNT &&
@@ -146,8 +158,8 @@ function isValidMaskStyle(v) {
   return Number.isInteger(v) && v >= 1 && v <= MASK_STYLE_COUNT
 }
 
-function isValidAnnotColor(v) {
-  return Number.isInteger(v) && v >= 0 && v < ANNOT_COLOR_COUNT
+function isValidDrawColorIndex(v) {
+  return Number.isInteger(v) && v >= 0 && v < DRAW_COLOR_COUNT
 }
 
 let notify = () => {}
@@ -180,10 +192,11 @@ export function applyTheme(id) {
   const theme = themeById(id)
   if (!theme || theme.id === state.theme.id) return null
   state.profiles = copyProfiles(theme.profiles)
+  state.drawColors = copyDrawColors(theme.drawColors)
   state.theme = { id: theme.id, name: theme.name, locked: theme.locked, builtin: theme.builtin }
   syncShiftTable()
   saveSettings()
-  return unionBBox(state.rects)
+  return repaintBBox(state.rects)
 }
 
 /** A locked theme is never written to: the first real edit copies it to a new
@@ -192,7 +205,10 @@ function ensureUnlockedTheme() {
   if (!state.theme.locked) return
   const id = nextForkId(state.theme.id, new Set(state.themes.map((t) => t.id)))
   const name = nextForkName(state.theme.name, new Set(state.themes.map((t) => t.name)))
-  const fork = { id, name, locked: false, builtin: false, profiles: copyProfiles(state.profiles) }
+  const fork = {
+    id, name, locked: false, builtin: false,
+    profiles: copyProfiles(state.profiles), drawColors: copyDrawColors(state.drawColors)
+  }
   state.themes.push(fork)
   state.theme = { id, name, locked: false, builtin: false }
   saveSettings()
@@ -228,10 +244,13 @@ let themeSaveTimer = null
 
 /** Debounced on its own timer so a palette edit and a group change do not
  * cancel each other. Keeps `state.themes`'s cached entry in step with
- * `state.profiles` so the theme picker's dots repaint immediately. */
+ * `state.profiles` and `state.drawColors` so pickers repaint immediately. */
 function saveActiveTheme() {
   const entry = themeById(state.theme.id)
-  if (entry) entry.profiles = copyProfiles(state.profiles)
+  if (entry) {
+    entry.profiles = copyProfiles(state.profiles)
+    entry.drawColors = copyDrawColors(state.drawColors)
+  }
   const bridge = globalThis.hl
   if (!bridge || typeof bridge.saveTheme !== 'function') return
   if (state.theme.locked) return          // unreachable after ensureUnlockedTheme; cheap belt and braces
@@ -240,7 +259,8 @@ function saveActiveTheme() {
     version: THEME_VERSION,
     name: state.theme.name,
     locked: false,
-    profiles: copyProfiles(state.profiles)
+    profiles: copyProfiles(state.profiles),
+    drawColors: copyDrawColors(state.drawColors)
   }
   clearTimeout(themeSaveTimer)
   themeSaveTimer = setTimeout(() => {
@@ -263,10 +283,16 @@ async function migrateInlineProfiles(profiles) {
   let name = 'Palette'
   for (let n = 2; takenNames.has(name); n++) name = `Palette ${n}`
 
-  const theme = { id, name, locked: false, builtin: false, profiles: copyProfiles(profiles) }
+  const theme = {
+    id, name, locked: false, builtin: false,
+    profiles: copyProfiles(profiles), drawColors: copyDrawColors(DEFAULT_DRAW_COLORS)
+  }
   const bridge = globalThis.hl
   if (bridge && typeof bridge.saveTheme === 'function') {
-    const res = await bridge.saveTheme(id, { version: THEME_VERSION, name, locked: false, profiles: theme.profiles })
+    const res = await bridge.saveTheme(id, {
+      version: THEME_VERSION, name, locked: false,
+      profiles: theme.profiles, drawColors: copyDrawColors(DEFAULT_DRAW_COLORS)
+    })
     if (!res || !res.ok) {
       notify('Could not save the migrated palette')
       return DEFAULT_THEME_ID
@@ -300,9 +326,13 @@ export async function applySettings(raw) {
     : isValidMaskStyle(legacyMask) ? legacyMask
     : MASK_NOISE
 
-  state.drawShape = raw && (raw.drawShape === 'rect' || raw.drawShape === 'arrow') ? raw.drawShape : 'rect'
-  state.drawColor = raw && isValidAnnotColor(raw.drawColor) ? raw.drawColor : 0
-  state.textColor = raw && isValidAnnotColor(raw.textColor) ? raw.textColor : 0
+  state.drawShape = raw && DRAW_SHAPES.includes(raw.drawShape) ? raw.drawShape : 'rect'
+  const colorIndex = (v) => {
+    if (!isValidDrawColorIndex(v)) return 0
+    return raw.version <= 5 ? LEGACY_DRAW_COLOR_MAP[v] : v
+  }
+  state.drawColor = raw ? colorIndex(raw.drawColor) : 0
+  state.textColor = raw ? colorIndex(raw.textColor) : 0
 
   let targetId = DEFAULT_THEME_ID
   if (raw && raw.version >= 3 && raw.version <= SETTINGS_VERSION && typeof raw.theme === 'string' && themeById(raw.theme)) {
@@ -315,10 +345,12 @@ export async function applySettings(raw) {
   const theme = themeById(targetId) || themeById(DEFAULT_THEME_ID)
   if (theme) {
     state.profiles = copyProfiles(theme.profiles)
+    state.drawColors = copyDrawColors(theme.drawColors)
     state.theme = { id: theme.id, name: theme.name, locked: theme.locked, builtin: theme.builtin }
   } else {
     // No readable theme at all: keep the built-in vectors so the app still works.
     state.profiles = defaultProfiles()
+    state.drawColors = copyDrawColors(DEFAULT_DRAW_COLORS)
     state.theme = { id: DEFAULT_THEME_ID, name: 'Default', locked: true, builtin: true }
     notify('No theme files found \u2014 using built-in vectors')
   }
@@ -431,17 +463,36 @@ export function setMaskStyle(style) {
   return unionBBox(state.rects.filter((r) => r.group === MASK_GROUP))
 }
 
-export function setDrawStyle(shape, colorIndex) {
-  if (shape !== 'rect' && shape !== 'arrow') return null
-  if (!isValidAnnotColor(colorIndex)) return null
+export function setDrawShape(shape) {
+  if (!DRAW_SHAPES.includes(shape)) return null
   state.drawShape = shape
+  saveSettings()
+  return null
+}
+
+export function setDrawColor(colorIndex) {
+  if (!isValidDrawColorIndex(colorIndex)) return null
   state.drawColor = colorIndex
   saveSettings()
   return null
 }
 
+export function setDrawPaletteColor(index, hex) {
+  if (!isValidDrawColorIndex(index) || !isValidHexColor(hex)) return null
+  const next = hex.toLowerCase()
+  if (next === state.drawColors[index]) return null
+  ensureUnlockedTheme()
+  state.drawColors[index] = next
+  saveActiveTheme()
+  return repaintBBox(vectorRectsUsingColor(index))
+}
+
+export function resetDrawPaletteColor(index) {
+  return setDrawPaletteColor(index, DEFAULT_DRAW_COLORS[index])
+}
+
 export function setTextColor(colorIndex) {
-  if (!isValidAnnotColor(colorIndex)) return null
+  if (!isValidDrawColorIndex(colorIndex)) return null
   state.textColor = colorIndex
   saveSettings()
   return null
