@@ -42,14 +42,16 @@ distributable app bundle would also need an icon.
   refresh sequence.
 - `renderer/view.js` — canvas sizing, dirty-rect repainting, hover/drag/
   selection overlay, PNG export.
-- `renderer/colors.js` — shift-vector swatch previews shared by the status
-  bar, pickers, and profile editor.
+- `renderer/colors.js` — shift-vector swatch previews and D/A colour
+  conversion shared by the status bar, pickers, and editors.
 - `renderer/statusbar.js` — group/direction buttons and image/rect/
   selection counters.
-- `renderer/picker.js` — the profile picker (2×5 grid, light/dark rows).
+- `renderer/picker.js` — the binding (2×5), mask, draw (shape + colour)
+  and text (colour) pickers.
 - `renderer/theme-picker.js` — the theme picker (one column per theme).
 - `renderer/themes.js` — theme file format, validation, and fork naming.
 - `renderer/profile-editor.js` — the profile-picker's RGB vector popup.
+- `renderer/draw-color-editor.js` — RGB popup for one theme D/A colour slot.
 - `renderer/help.js` — the keyboard help overlay.
 - `renderer/keylabels.js` — `keyLabels(platform)`, the single table of
   user-visible shortcut spellings (`⌘`/`⌃`/`⇧` glyphs on macOS, `Ctrl+…`

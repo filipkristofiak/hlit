@@ -4,7 +4,22 @@
 
 import { PROFILE_COUNT } from './effect.js'
 
-export const THEME_VERSION = 1
+export const THEME_VERSION = 2
+export const DRAW_COLOR_COUNT = 5
+export const DEFAULT_DRAW_COLORS = ['#ff3b30', '#ffcc00', '#0a84ff', '#ffffff', '#000000']
+const HEX_COLOR_RE = /^#[0-9a-fA-F]{6}$/
+
+export function isValidHexColor(s) {
+  return typeof s === 'string' && HEX_COLOR_RE.test(s)
+}
+
+export function isValidDrawColors(c) {
+  return Array.isArray(c) && c.length === DRAW_COLOR_COUNT && c.every(isValidHexColor)
+}
+
+export function copyDrawColors(c) {
+  return c.map((s) => s.toLowerCase())
+}
 
 /** Filename stem of a theme file, and therefore its id. Kept to lowercase
  * ASCII so the id is a safe filename on every platform. Mirrored in
@@ -35,18 +50,21 @@ export function copyProfiles(profiles) {
  * `builtin` true when that id is one of the app's shipped (reserved) themes. */
 export function normalizeTheme(raw) {
   if (!raw || typeof raw !== 'object') return null
-  if (raw.version !== THEME_VERSION) return null
+  if (raw.version !== 1 && raw.version !== THEME_VERSION) return null
   if (typeof raw.id !== 'string' || !THEME_ID_RE.test(raw.id)) return null
   if (typeof raw.name !== 'string' || raw.name.trim() === '') return null
   if (!Array.isArray(raw.profiles) || raw.profiles.length !== PROFILE_COUNT) return null
   if (!raw.profiles.every(isValidProfile)) return null
+  if (raw.version === THEME_VERSION && !isValidDrawColors(raw.drawColors)) return null
+  const drawColors = copyDrawColors(raw.version === 1 ? DEFAULT_DRAW_COLORS : raw.drawColors)
   const builtin = raw.builtin === true
   return {
     id: raw.id,
     name: raw.name,
     locked: builtin || raw.locked === true,   // a built-in is locked whatever its file claims
     builtin,
-    profiles: copyProfiles(raw.profiles)
+    profiles: copyProfiles(raw.profiles),
+    drawColors
   }
 }
 

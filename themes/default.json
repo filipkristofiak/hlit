@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": 2,
   "name": "Default",
   "locked": true,
   "profiles": [
@@ -8,5 +8,6 @@
     { "pos": { "r": 0, "g": -80, "b": -80 }, "neg": { "r": 140, "g": 0, "b": 30 }, "linked": false },
     { "pos": { "r": -85, "g": -75, "b": 0 }, "neg": { "r": 20, "g": 50, "b": 110 }, "linked": false },
     { "pos": { "r": -80, "g": -30, "b": -70 }, "neg": { "r": 80, "g": 30, "b": 70 }, "linked": false }
-  ]
+  ],
+  "drawColors": ["#ff3b30", "#ffcc00", "#0a84ff", "#ffffff", "#000000"]
 }

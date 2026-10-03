@@ -6,9 +6,11 @@ import { GROUP_COUNT, PROFILE_COUNT, MASK_NOISE, MASK_PIXELATE, MASK_LIGHT, MASK
 import {
   state, addRect, deleteAt, setGroupProfile, setGroupSign, setGroupBinding, setMaskStyle, toggleActiveSign, setProfileChannel,
   setProfileLinked, resetProfile, undo, redo, selectOnly, toggleSelect, clearSelection, assignSelectedGroup, setThemeList,
-  applyTheme, applySettings, resizeTo, setSource, setRectText, setDrawStyle, setTextColor
+  applyTheme, applySettings, resizeTo, setSource, setRectText, setDrawShape, setDrawColor,
+  setDrawPaletteColor, resetDrawPaletteColor, setTextColor, dirtyBBox
 } from '../renderer/state.js'
-import { annotationPad, arrowPoints, wrapLines } from '../renderer/annotations.js'
+import { annotationPad, segmentPoints, wrapLines } from '../renderer/annotations.js'
+import { DEFAULT_DRAW_COLORS, normalizeTheme } from '../renderer/themes.js'
 
 const W = 8
 const H = 4
@@ -667,19 +669,29 @@ console.log('All effect/state checks passed.')
 const saved = []
 globalThis.hl = { saveTheme: (id, theme) => { saved.push({ id, theme }); return { ok: true } } }
 
-setThemeList([
+const v1Themes = [
   { version: 1, id: 'default', name: 'Default', locked: true, builtin: true,
     profiles: Array.from({ length: PROFILE_COUNT }, () => mk({ r: 0, g: 0, b: -160 })) },
   { version: 1, id: 'cool', name: 'Cool', locked: false, builtin: false,
     profiles: Array.from({ length: PROFILE_COUNT }, () => mk({ r: -40, g: 0, b: 0 })) }
-])
+]
+setThemeList(v1Themes)
 
 assert.strictEqual(state.themes.length, 2, 'both valid themes are listed')
+assert.deepStrictEqual(state.themes[0].drawColors, DEFAULT_DRAW_COLORS, 'v1 themes inherit the default D/A palette')
+setThemeList([...v1Themes,
+  { ...v1Themes[1], version: 2, id: 'bad', drawColors: DEFAULT_DRAW_COLORS.slice(1) },
+  { ...v1Themes[1], version: 2, id: 'caps', drawColors: ['#FF0000', ...DEFAULT_DRAW_COLORS.slice(1)] }
+])
+assert.strictEqual(state.themes.length, 3, 'a v2 theme missing a colour slot is rejected')
+assert.strictEqual(state.themes[2].drawColors[0], '#ff0000', 'v2 theme hex values normalise to lowercase')
+setThemeList(v1Themes)
 
 applyTheme('default')
 assert.strictEqual(state.theme.id, 'default', 'applyTheme switches the active theme')
 assert.ok(state.theme.locked, 'the built-in theme is locked')
 assert.deepStrictEqual(state.profiles[0].pos, { r: 0, g: 0, b: -160 }, 'the palette comes from the theme file')
+assert.deepStrictEqual(state.drawColors, DEFAULT_DRAW_COLORS, 'v1 Default loads its fallback D/A colours')
 assert.strictEqual(applyTheme('nope'), null, 'an unknown theme id is a no-op')
 
 // A no-op edit must not fork
@@ -710,6 +722,38 @@ await new Promise((r) => setTimeout(r, 250))   // let the debounced theme write 
 assert.ok(saved.length > 0, 'the fork is persisted through the bridge')
 assert.ok(saved.every((s) => s.id !== 'default'), 'the locked theme is never written')
 assert.ok(saved.every((s) => s.theme.locked === false), 'every written theme is unlocked')
+
+// Palette slots recolour only their own vector rects, with the arrowhead/cap padding.
+applyTheme('default')
+const priorRects = state.rects, priorW = state.imageW, priorH = state.imageH
+state.imageW = 80
+state.imageH = 80
+const paletteRect = { x: 25, y: 25, w: 10, h: 10, group: DRAW_GROUP, shape: 'arrow', color: 0 }
+state.rects = [paletteRect]
+assert.strictEqual(setDrawPaletteColor(0, '#ff3b30'), null, 'unchanged colour does not repaint')
+assert.strictEqual(state.theme.id, 'default', 'unchanged colour does not fork')
+const paletteDirty = setDrawPaletteColor(0, '#00ff00')
+assert.strictEqual(state.theme.id, 'default-copy-3', 'colour editing a locked theme forks it')
+assert.strictEqual(state.drawColors[0], '#00ff00', 'the active slot is edited')
+assert.strictEqual(state.themes.find((t) => t.id === 'default').drawColors[0], '#ff3b30', 'the locked theme retains its colour')
+assert.deepStrictEqual(paletteDirty, dirtyBBox(paletteRect), 'palette repaint covers the arrowhead beyond its bbox')
+state.rects = [{ ...paletteRect, color: 1 }]
+assert.strictEqual(setDrawPaletteColor(0, '#0000ff'), null, 'unaffected slots need no repaint')
+resetDrawPaletteColor(0)
+assert.strictEqual(state.drawColors[0], '#ff3b30', 'reset restores the default red')
+setDrawPaletteColor(0, '#00ff00')
+await new Promise((r) => setTimeout(r, 250))
+const colourSave = saved.findLast((s) => s.id === 'default-copy-3')
+assert.strictEqual(colourSave.theme.version, 2, 'fork writes the v2 theme format')
+assert.strictEqual(colourSave.theme.drawColors[0], '#00ff00', 'fork persists edited colours')
+assert.deepStrictEqual(
+  normalizeTheme({ ...colourSave.theme, id: colourSave.id }).drawColors,
+  state.drawColors,
+  'the persisted fork reloads with its edited colours'
+)
+state.rects = priorRects
+state.imageW = priorW
+state.imageH = priorH
 delete globalThis.hl
 
 console.log('themes: OK')
@@ -844,22 +888,22 @@ assert.strictEqual(vecWithColorModeMap[0] >> GROUP_CODE_BITS, 0, 'no bleed into 
 console.log('vector group kernel guard: OK')
 
 assert.deepStrictEqual(
-  arrowPoints({ x: 10, y: 20, w: 30, h: 40, flipX: false, flipY: false }),
+  segmentPoints({ x: 10, y: 20, w: 30, h: 40, flipX: false, flipY: false }),
   { x0: 10, y0: 20, x1: 40, y1: 60 },
-  'arrowPoints: no flip runs tail top-left to tip bottom-right'
+  'segmentPoints: no flip runs tail top-left to tip bottom-right'
 )
 assert.deepStrictEqual(
-  arrowPoints({ x: 10, y: 20, w: 30, h: 40, flipX: true, flipY: false }),
+  segmentPoints({ x: 10, y: 20, w: 30, h: 40, flipX: true, flipY: false }),
   { x0: 40, y0: 20, x1: 10, y1: 60 },
-  'arrowPoints: flipX swaps the x tail/tip'
+  'segmentPoints: flipX swaps the x tail/tip'
 )
 assert.deepStrictEqual(
-  arrowPoints({ x: 10, y: 20, w: 30, h: 40, flipX: true, flipY: true }),
+  segmentPoints({ x: 10, y: 20, w: 30, h: 40, flipX: true, flipY: true }),
   { x0: 40, y0: 60, x1: 10, y1: 20 },
-  'arrowPoints: both flips put the tail at the bottom-right corner'
+  'segmentPoints: both flips put the tail at the bottom-right corner'
 )
 
-console.log('arrowPoints: OK')
+console.log('segmentPoints: OK')
 
 const stubCtx = { measureText: (s) => ({ width: s.length }) }
 assert.deepStrictEqual(wrapLines(stubCtx, 'aaa bbb', 4), ['aaa', 'bbb'], 'wrapLines greedily wraps on word boundaries')
@@ -933,11 +977,14 @@ assert.strictEqual(JSON.stringify(state.groups), groupsBeforeAnnot, 'toggleActiv
 
 console.log('toggleActiveSign vector guard: OK')
 
-setDrawStyle('arrow', 3)
-assert.strictEqual(state.drawShape, 'arrow', 'setDrawStyle updates drawShape')
-assert.strictEqual(state.drawColor, 3, 'setDrawStyle updates drawColor')
+setDrawShape('line')
+assert.strictEqual(state.drawShape, 'line', 'the line shape is accepted')
+assert.strictEqual(setDrawShape('blob'), null, 'an unknown shape is ignored')
+assert.strictEqual(state.drawShape, 'line', 'an unknown shape does not replace the selected shape')
+setDrawColor(2)
+assert.strictEqual(state.drawColor, 2, 'draw palette slot is selected')
 setTextColor(2)
-assert.strictEqual(state.textColor, 2, 'setTextColor updates textColor')
+assert.strictEqual(state.textColor, 2, 'text uses the shared palette slot')
 
 const V5_GROUPS = [
   { profile: 0, sign: 1 },
@@ -949,8 +996,12 @@ const V5_GROUPS = [
 
 await applySettings({ version: 5, theme: 'default', groups: V5_GROUPS, maskStyle: MASK_NOISE, drawShape: 'arrow', drawColor: 3, textColor: 2 })
 assert.strictEqual(state.drawShape, 'arrow', 'applySettings loads drawShape from a v5 file')
-assert.strictEqual(state.drawColor, 3, 'applySettings loads drawColor from a v5 file')
-assert.strictEqual(state.textColor, 2, 'applySettings loads textColor from a v5 file')
+assert.strictEqual(state.drawColor, 2, 'v5 blue remaps to the blue slot')
+assert.strictEqual(state.textColor, 0, 'v5 green remaps to red')
+await applySettings({ version: 6, theme: 'default', groups: V5_GROUPS, maskStyle: MASK_NOISE, drawShape: 'line', drawColor: 4, textColor: 3 })
+assert.strictEqual(state.drawShape, 'line', 'v6 loads line shape')
+assert.strictEqual(state.drawColor, 4, 'v6 loads black slot unchanged')
+assert.strictEqual(state.textColor, 3, 'v6 loads white slot unchanged')
 
 await applySettings({ version: 5, theme: 'default', groups: V5_GROUPS, maskStyle: MASK_NOISE, drawShape: 'blob', drawColor: 9, textColor: -1 })
 assert.strictEqual(state.drawShape, 'rect', 'an invalid drawShape falls back to rect')
@@ -958,6 +1009,6 @@ assert.strictEqual(state.drawColor, 0, 'an out-of-range drawColor falls back to 
 assert.strictEqual(state.textColor, 0, 'an out-of-range textColor falls back to 0')
 
 await applySettings({ version: 4, theme: 'cool', groups: V5_GROUPS, maskStyle: MASK_NOISE })
-assert.strictEqual(state.theme.id, 'cool', 'a v4 theme pointer still resolves after the version bump to 5')
+assert.strictEqual(state.theme.id, 'cool', 'a v4 theme pointer still resolves after the version bump to 6')
 
 console.log('applySettings drawShape/drawColor/textColor: OK')

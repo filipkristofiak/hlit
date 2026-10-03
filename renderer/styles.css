@@ -340,6 +340,23 @@ body {
     repeating-linear-gradient(90deg, rgba(0, 0, 0, .55) 0 3px, transparent 3px 6px);
 }
 
+.picker-cell.picker-shape {
+  background: #2c2c2c;
+  color: #e6e6e6;
+  display: grid;
+  place-items: center;
+}
+
+.picker-cell.picker-shape svg {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
 .theme-overlay {
   position: fixed;
   inset: 0;

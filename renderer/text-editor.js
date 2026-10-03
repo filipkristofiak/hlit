@@ -3,7 +3,7 @@
 
 import { state } from './state.js'
 import { fontPxFor, LINE_HEIGHT } from './annotations.js'
-import { annotColor } from './colors.js'
+import { drawColorAt } from './colors.js'
 import { viewScale } from './view.js'
 import * as cmd from './commands.js'
 
@@ -44,7 +44,7 @@ export function openTextEditor(rect, { isNew }) {
   el.style.height = `${rect.h * k}px`
   el.style.fontSize = `${fontPxFor(state.scale) * k}px`
   el.style.lineHeight = String(LINE_HEIGHT)
-  el.style.color = annotColor(rect.color)
+  el.style.color = drawColorAt(state.drawColors, rect.color)
   el.value = rect.text || ''
 
   el.addEventListener('keydown', (e) => {

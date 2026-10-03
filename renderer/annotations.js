@@ -3,9 +3,10 @@
 // context is always passed in.
 
 import { DRAW_GROUP, ANNOT_GROUP, isVectorGroup } from './effect.js'
-import { annotColor } from './colors.js'
+import { drawColorAt } from './colors.js'
 
 export const STROKE_W = 2             // image px at scale 1
+export const DRAW_SHAPES = ['rect', 'line', 'arrow']
 export const TEXT_FONT_PX = 16        // image px at scale 1
 export const ARROW_HEAD_LEN = 14
 export const ARROW_HEAD_HALF = 7
@@ -19,9 +20,9 @@ export function annotationPad(scale) {
   return Math.ceil(Math.max(ARROW_HEAD_HALF * scale, STROKE_W * scale * 1.5) + STROKE_W * scale) + 1
 }
 
-/** Tail-then-tip endpoints for a D arrow. flipX/flipY record which corner the
- *  drag started from — the one piece of arrow state a normalised bbox can't express. */
-export function arrowPoints(rect) {
+/** Tail-then-tip endpoints for a D line or arrow. flipX/flipY record which corner the
+ *  drag started from — the one piece of direction a normalised bbox can't express. */
+export function segmentPoints(rect) {
   return {
     x0: rect.flipX ? rect.x + rect.w : rect.x,
     y0: rect.flipY ? rect.y + rect.h : rect.y,
@@ -66,8 +67,8 @@ function bboxIntersects(a, b) {
   return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y
 }
 
-function drawArrow(ctx, r, scale) {
-  const { x0, y0, x1, y1 } = arrowPoints(r)
+function drawArrow(ctx, r, scale, color) {
+  const { x0, y0, x1, y1 } = segmentPoints(r)
   const dx = x1 - x0
   const dy = y1 - y0
   const len = Math.hypot(dx, dy) || 1
@@ -81,13 +82,13 @@ function drawArrow(ctx, r, scale) {
 
   ctx.lineWidth = lw
   ctx.lineCap = 'round'
-  ctx.strokeStyle = annotColor(r.color)
+  ctx.strokeStyle = color
   ctx.beginPath()
   ctx.moveTo(x0, y0)
   ctx.lineTo(bx, by)
   ctx.stroke()
 
-  ctx.fillStyle = annotColor(r.color)
+  ctx.fillStyle = color
   ctx.beginPath()
   ctx.moveTo(x1, y1)
   ctx.lineTo(bx - uy * headHalf, by + ux * headHalf)
@@ -96,14 +97,25 @@ function drawArrow(ctx, r, scale) {
   ctx.fill()
 }
 
-function drawRectOutline(ctx, r, scale) {
+function drawLine(ctx, r, scale, color) {
+  const { x0, y0, x1, y1 } = segmentPoints(r)
+  ctx.lineWidth = STROKE_W * scale
+  ctx.lineCap = 'round'
+  ctx.strokeStyle = color
+  ctx.beginPath()
+  ctx.moveTo(x0, y0)
+  ctx.lineTo(x1, y1)
+  ctx.stroke()
+}
+
+function drawRectOutline(ctx, r, scale, color) {
   const lw = STROKE_W * scale
   ctx.lineWidth = lw
-  ctx.strokeStyle = annotColor(r.color)
+  ctx.strokeStyle = color
   ctx.strokeRect(r.x + lw / 2, r.y + lw / 2, r.w - lw, r.h - lw)
 }
 
-function drawText(ctx, r, scale) {
+function drawText(ctx, r, scale, color) {
   if (!r.text) return
   ctx.save()
   ctx.beginPath()
@@ -111,7 +123,7 @@ function drawText(ctx, r, scale) {
   ctx.clip()
   ctx.font = fontFor(scale)
   ctx.textBaseline = 'top'
-  ctx.fillStyle = annotColor(r.color)
+  ctx.fillStyle = color
   const fontPx = fontPxFor(scale)
   const lines = wrapLines(ctx, r.text, r.w)
   for (let i = 0; i < lines.length; i++) {
@@ -121,7 +133,7 @@ function drawText(ctx, r, scale) {
 }
 
 /** Draws every D/A rect onto `ctx`, clipped to `dirty` (image-space {x,y,w,h}). */
-export function drawAnnotations(ctx, rects, dirty, scale) {
+export function drawAnnotations(ctx, rects, dirty, scale, colors) {
   ctx.save()
   ctx.beginPath()
   ctx.rect(dirty.x, dirty.y, dirty.w, dirty.h)
@@ -133,11 +145,13 @@ export function drawAnnotations(ctx, rects, dirty, scale) {
     const padded = { x: r.x - pad, y: r.y - pad, w: r.w + pad * 2, h: r.h + pad * 2 }
     if (!bboxIntersects(padded, dirty)) continue
 
+    const color = drawColorAt(colors, r.color)
     if (r.group === DRAW_GROUP) {
-      if (r.shape === 'arrow') drawArrow(ctx, r, scale)
-      else drawRectOutline(ctx, r, scale)
+      if (r.shape === 'arrow') drawArrow(ctx, r, scale, color)
+      else if (r.shape === 'line') drawLine(ctx, r, scale, color)
+      else drawRectOutline(ctx, r, scale, color)
     } else if (r.group === ANNOT_GROUP) {
-      drawText(ctx, r, scale)
+      drawText(ctx, r, scale, color)
     }
   }
 

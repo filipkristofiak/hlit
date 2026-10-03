@@ -92,7 +92,7 @@ export function paint(dirty) {
   const buf = scratchFor(dirty.w, dirty.h)
   applyEffect(state.base.data, buf.data, state.modeMap, state.imageW, state.shiftTable, dirty, masks)
   baseCtx.putImageData(buf, dirty.x, dirty.y)
-  drawAnnotations(baseCtx, state.rects, dirty, state.scale)
+  drawAnnotations(baseCtx, state.rects, dirty, state.scale, state.drawColors)
 }
 
 /** Maps a client-space pointer position to a clamped image-space pixel. */
