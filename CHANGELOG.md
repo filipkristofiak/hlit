@@ -6,6 +6,11 @@ versions — run the latest tag, or `main`.
 
 ## Unreleased
 
+## 0.3.0 — 2026-10-03
+
+- macOS: the repo-launched Dock icon now uses an inset rounded plate with
+  transparent corners instead of the square logo (`swift scripts/make-macos-icon.swift`
+  regenerates the PNG).
 - Windows: `scripts/create-shortcut.ps1` adds a Start Menu entry and a
   `Ctrl+Alt+H` launch hotkey (see `docs/running.md`).
 

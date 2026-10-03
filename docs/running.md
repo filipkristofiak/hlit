@@ -50,6 +50,10 @@ so by default there is no Spotlight or Start-menu entry and no standalone
 dock icon. Every launch goes through one of the commands above, unless you
 set up the Windows shortcut described below.
 
+On macOS, the running app's Dock tile uses `assets/hlit_icon.png`: an inset
+rounded icon with transparent corners. It appears while Electron is running;
+without a packaged `.app`, there is no permanent standalone Dock app to pin.
+
 ## Platform notes
 
 macOS is the primary development platform. The Windows and Linux code paths
