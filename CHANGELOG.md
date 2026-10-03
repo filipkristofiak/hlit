@@ -6,6 +6,13 @@ versions — run the latest tag, or `main`.
 
 ## Unreleased
 
+- macOS: the Spotlight launcher stages an Electron app bundle before
+  replacing the old one, and runs as `com.kristofiak.hlit` instead of Electron.
+- macOS: rerun the installer after Electron upgrades; replace Dock pins
+  created before this launcher identity change.
+- macOS: About hlit shows the app version, Filip Kristofiak credit, and
+  `https://hlit.app`.
+
 ## 0.3.0 — 2026-10-03
 
 - macOS: `scripts/create-macos-launcher.sh` installs a searchable

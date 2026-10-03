@@ -9,9 +9,12 @@ they hit the bug on instead of "whatever `git pull` gave me on Tuesday".
 
 ## Where the version shows up
 
-The help overlay footer (press `?`) shows the current `vX.Y.Z`. It is
-sourced from `package.json`'s `version` field via Electron's
-`app.getVersion()` — there is no second place the version is kept.
+The help overlay footer (press `?`) shows `vX.Y.Z`. On macOS, the
+**hlit ▸ About hlit** panel shows the same version without the `v` prefix.
+Both source it from `package.json` via Electron's `app.getVersion()`.
+The Spotlight launcher clones Electron's bundle, so its `Info.plist`
+retains Electron's bundle version; the About panel overrides that with
+hlit's version. There is no second hlit version to bump.
 
 `SETTINGS_VERSION` (`renderer/state.js`) and `THEME_VERSION`
 (`renderer/themes.js`) are unrelated on-disk file-format versions, not the
