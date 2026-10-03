@@ -8,6 +8,8 @@ versions — run the latest tag, or `main`.
 
 ## 0.3.0 — 2026-10-03
 
+- macOS: `scripts/create-macos-launcher.sh` installs a searchable
+  `~/Applications/hlit.app` that opens this checkout without a terminal.
 - macOS: the repo-launched Dock icon now uses an inset rounded plate with
   transparent corners instead of the square logo (`swift scripts/make-macos-icon.swift`
   regenerates the PNG).

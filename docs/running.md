@@ -45,14 +45,35 @@ equivalent and avoids the npm startup cost:
 ~/projects/tools/hlit/node_modules/.bin/electron ~/projects/tools/hlit
 ```
 
-The app is not packaged — there is no `.app`, `.exe`, or `.AppImage` bundle,
-so by default there is no Spotlight or Start-menu entry and no standalone
-dock icon. Every launch goes through one of the commands above, unless you
-set up the Windows shortcut described below.
+The app is not packaged — there is no standalone Electron `.app`, `.exe`,
+or `.AppImage`. By default, launches use one of the commands above; macOS
+Spotlight and Windows Start search need the launchers below.
 
 On macOS, the running app's Dock tile uses `assets/hlit_icon.png`: an inset
-rounded icon with transparent corners. It appears while Electron is running;
-without a packaged `.app`, there is no permanent standalone Dock app to pin.
+rounded icon with transparent corners. The Spotlight launcher has the same
+icon in Finder and points to this checkout.
+
+## macOS: launch from Spotlight
+
+After `npm install`, from the repo root:
+
+```sh
+./scripts/create-macos-launcher.sh
+```
+
+This creates `~/Applications/hlit.app`, registers it with Launch Services,
+and gives it the app icon. To launch, press ⌘ Space, type **hlit**, and press
+Return. Or run `open -a ~/Applications/hlit.app` from a terminal.
+
+The launcher starts this repo's Electron binary with this repo as its
+argument — no terminal, background service, or separate packaged copy.
+Changes to the app take effect on the next
+launch. Rerun the script if you move the repo or update the icon. If
+Spotlight indexing is disabled for `~/Applications`, enable it in macOS
+Spotlight settings; `open -a ~/Applications/hlit.app` still works.
+
+To remove the launcher, delete `~/Applications/hlit.app`. This does not
+delete the repo or your settings.
 
 ## Platform notes
 

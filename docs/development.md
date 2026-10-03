@@ -17,8 +17,9 @@ plate, transparent outer canvas, and a soft shadow. Commit the generated PNG;
 running the app does not require Swift. Electron loads the PNG directly when
 launched from the repo, so Xcode's automatic app-icon mask does not apply.
 The [Apple app icon templates](https://developer.apple.com/design/resources/)
-are the reference for future artwork changes; a packaged `.app` would need
-its own bundle icon.
+are the reference for future artwork changes. The Spotlight launcher builds
+its `.icns` from the PNG; a future packaged Electron `.app` would need a
+bundle icon of its own.
 
 ## Layout
 
