@@ -9,9 +9,9 @@ they hit the bug on instead of "whatever `git pull` gave me on Tuesday".
 
 ## Where the version shows up
 
-The help overlay footer (press `?`): `v0.2.0 · ...`. It is sourced from
-`package.json`'s `version` field via Electron's `app.getVersion()` — there
-is no second place the version is kept.
+The help overlay footer (press `?`) shows the current `vX.Y.Z`. It is
+sourced from `package.json`'s `version` field via Electron's
+`app.getVersion()` — there is no second place the version is kept.
 
 `SETTINGS_VERSION` (`renderer/state.js`) and `THEME_VERSION`
 (`renderer/themes.js`) are unrelated on-disk file-format versions, not the

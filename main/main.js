@@ -9,7 +9,7 @@ protocol.registerSchemesAsPrivileged([
 ])
 
 const RENDERER = path.join(__dirname, '..', 'renderer')
-const APP_ICON = path.join(__dirname, '..', 'assets', 'hlit_logo.png')
+const APP_ICON = path.join(__dirname, '..', 'assets', 'hlit_icon.png')
 const REPO_URL = 'https://github.com/filipkristofiak/hlit'
 
 let win = null

@@ -8,10 +8,11 @@ screenshot, highlight selections, copy or save the result.
 
 ## Platform support
 
-Developed and tested on **macOS** only. Windows and Linux code paths exist —
-the menu bar, the shortcut labels, and the config directory are all
-per-platform — but have never been run on either system. Treat them as
-untested.
+Developed primarily on **macOS**. **Windows** has been tested and improved:
+keyboard shortcuts were fixed, and a Start Menu launcher with a global hotkey
+was added. **Linux** has had limited manual testing with
+`PATH="$HOME/.local/bin:$PATH"`; broader Linux behavior remains unverified.
+See [running instructions](docs/running.md) for launch options.
 
 ## Run it
 

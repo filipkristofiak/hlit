@@ -8,6 +8,19 @@ Runs `scripts/check-effect.mjs`, a headless assertion suite over the pixel
 kernel (`renderer/effect.js`) and document state (`renderer/state.js`) —
 no Electron window required.
 
+## macOS Dock icon
+
+`assets/hlit_logo.png` is the original artwork. To regenerate the Dock/window
+icon after changing it, run `swift scripts/make-macos-icon.swift` on macOS.
+This produces `assets/hlit_icon.png` (1024 × 1024) with an inset rounded
+plate, transparent outer canvas, and a soft shadow. Commit the generated PNG;
+running the app does not require Swift. Electron loads the PNG directly when
+launched from the repo, so Xcode's automatic app-icon mask does not apply.
+The [Apple app icon templates](https://developer.apple.com/design/resources/)
+are the reference for future artwork changes. The Spotlight launcher builds
+its `.icns` from the PNG; a future packaged Electron `.app` would need a
+bundle icon of its own.
+
 ## Layout
 
 - `main/main.js` — Electron main process: registers the `app://` scheme
