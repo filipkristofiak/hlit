@@ -207,6 +207,14 @@ app.whenReady().then(async () => {
   // there is no bundle of ours, so set it explicitly. `app.dock` is undefined off macOS.
   const icon = nativeImage.createFromPath(APP_ICON)
   if (app.dock && !icon.isEmpty()) app.dock.setIcon(icon)
+  if (process.platform === 'darwin') {
+    app.setAboutPanelOptions({
+      applicationName: 'hlit',
+      applicationVersion: app.getVersion(),
+      version: app.getVersion(),
+      credits: 'Made by Filip Kristofiak\nhttps://hlit.app'
+    })
+  }
   registerAppProtocol()
   applyMenu((name) => { if (win) win.webContents.send('command', name) })
   registerIpc()

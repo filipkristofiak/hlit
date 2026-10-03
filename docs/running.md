@@ -45,9 +45,9 @@ equivalent and avoids the npm startup cost:
 ~/projects/tools/hlit/node_modules/.bin/electron ~/projects/tools/hlit
 ```
 
-The app is not packaged — there is no standalone Electron `.app`, `.exe`,
-or `.AppImage`. By default, launches use one of the commands above; macOS
-Spotlight and Windows Start search need the launchers below.
+The repo is not packaged for distribution; the commands above use its
+installed Electron binary. On macOS, the Spotlight launcher below creates
+a local app bundle. Windows Start search uses the shortcut below.
 
 On macOS, the running app's Dock tile uses `assets/hlit_icon.png`: an inset
 rounded icon with transparent corners. The Spotlight launcher has the same
@@ -64,13 +64,23 @@ After `npm install`, from the repo root:
 This creates `~/Applications/hlit.app`, registers it with Launch Services,
 and gives it the app icon. To launch, press ⌘ Space, type **hlit**, and press
 Return. Or run `open -a ~/Applications/hlit.app` from a terminal.
+Its macOS bundle ID is `com.kristofiak.hlit`.
 
-The launcher starts this repo's Electron binary with this repo as its
-argument — no terminal, background service, or separate packaged copy.
-Changes to the app take effect on the next
-launch. Rerun the script if you move the repo or update the icon. If
-Spotlight indexing is disabled for `~/Applications`, enable it in macOS
-Spotlight settings; `open -a ~/Applications/hlit.app` still works.
+The launcher contains a clone of the installed Electron app and starts it
+with this repo as its argument — no terminal or background service. App code
+changes take effect on the next launch. Rerun the script if you move the
+repo, update the icon, or upgrade Electron with `npm install`: the launcher
+keeps the Electron version it copied when installed. If Spotlight indexing
+is disabled for `~/Applications`, enable it in macOS Spotlight settings;
+`open -a ~/Applications/hlit.app` still works.
+
+If you used the v0.3.0 launcher, quit hlit and rerun the script to replace it.
+Remove any old Dock pin and pin hlit again; the running app's identity has
+changed from Electron to `com.kristofiak.hlit`.
+
+On macOS, **hlit ▸ About hlit** shows the app version, developer credit,
+and `https://hlit.app`. The in-app Help panel has a clickable GitHub
+repository link.
 
 To remove the launcher, delete `~/Applications/hlit.app`. This does not
 delete the repo or your settings.
