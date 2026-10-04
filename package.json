@@ -5,7 +5,8 @@
   "main": "main/main.js",
   "scripts": {
     "start": "electron .",
-    "check": "node scripts/check-effect.mjs && node scripts/check-menu.mjs"
+    "check": "node scripts/check-effect.mjs && node scripts/check-menu.mjs",
+    "demo": "electron scripts/record-demo.cjs docs/demo/hlit_demo.tape"
   },
   "devDependencies": { "electron": "^43.6.0" }
 }
