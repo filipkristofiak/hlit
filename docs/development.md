@@ -8,6 +8,21 @@ Runs `scripts/check-effect.mjs`, a headless assertion suite over the pixel
 kernel (`renderer/effect.js`) and document state (`renderer/state.js`) —
 no Electron window required.
 
+## Regenerate the README demo
+
+From the repo root, install dependencies and `ffmpeg`, then run `npm run demo`.
+The Electron tape runner replays `docs/demo/hlit_demo.tape` against the real app
+using `docs/demo/hlit_demo_base.png`, and overwrites `docs/demo/hlit_demo.gif`.
+It captures the app window (not the desktop); the tape's paths are relative to
+the working directory. It uses an isolated temporary config and image-backed
+clipboard handler, leaving your settings and clipboard untouched. Keep the
+window focused while recording, especially while the annotation editor is open.
+The tape supports timed `Sleep`, `Type`, keys, `MoveTo`, `Click`, and `Drag`
+steps; positions are image pixels (`x,y`) or quoted CSS selectors.
+`Set PlaybackSpeed 1.25` makes the encoded GIF play 25% faster than the
+capture; the help pause is 1.25 seconds in the tape to remain 1 second
+in the GIF.
+
 ## macOS Dock icon
 
 `assets/hlit_logo.png` is the original artwork. To regenerate the Dock/window
@@ -61,6 +76,10 @@ distributable app bundle would also need an icon.
 - `themes/default.json` — the shipped seed theme, copied into
   `~/.config/hlit/themes/` at every launch.
 - `scripts/check-effect.mjs` — headless kernel/state assertions (`npm run check`).
+- `scripts/record-demo.cjs` — replays the demo tape in Electron and captures
+  frames for GIF encoding with ffmpeg.
+- `docs/demo/hlit_demo.tape` — scripted README demo; its source screenshot is
+  `docs/demo/hlit_demo_base.png`.
 - `scripts/release-notes.mjs` — release gate and CHANGELOG extractor, run by
   `.github/workflows/release.yml` on a `v*` tag push (see
   [docs/releasing.md](releasing.md)).
