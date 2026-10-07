@@ -4,6 +4,8 @@ A minimalistic Electron app for highlighting screenshots — draw rectangles
 over the areas, and each rectangle applies an RGB color shift. Paste a
 screenshot, highlight selections, copy or save the result.
 
+**[hlit.app](https://hlit.app)** runs the same demo live — take over it with your own screenshot.
+
 ![hlit demo](docs/demo/hlit_demo.gif)
 
 ## Platform support
