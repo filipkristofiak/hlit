@@ -6,6 +6,8 @@ versions — run the latest tag, or `main`.
 
 ## Unreleased
 
+## 0.5.0 — 2026-10-27
+
 - Mask group: Mist is the fifth style (`m`, `p`, `5`), fogging text in the
   region's background colour while retaining table layout and rough text
   shapes. Like pixelate, it is recoverable and not suitable for secrets.
