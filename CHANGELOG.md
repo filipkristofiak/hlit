@@ -6,6 +6,8 @@ versions — run the latest tag, or `main`.
 
 ## Unreleased
 
+## 0.5.1 — 2026-10-27
+
 - Draw group: exactly horizontal and vertical lines/arrows now persist after
   dragging and render without a 1 px slant. Hovering and deleting lines/arrows
   allows a 4 screen-pixel margin around their bounding boxes.
