@@ -119,8 +119,8 @@ export function deleteRect(rect) {
 }
 
 /** Returns false when no rect sat under the cursor, so the caller can toast. */
-export function deleteAtPointer(x, y) {
-  const dirty = doc.deleteAt(x, y)
+export function deleteAtPointer(x, y, slop) {
+  const dirty = doc.deleteAt(x, y, slop)
   if (!dirty) return false
   render(dirty, true)
   return true

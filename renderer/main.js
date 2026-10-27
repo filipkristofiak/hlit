@@ -1,10 +1,11 @@
 // Bootstrap + input wiring: pointer drag-to-highlight, keyboard shortcuts,
 // and menu commands delivered over the preload bridge.
 
-import { state, loadImage, applySettings, setThemeList, setThemeNotifier, setSource, dirtyBBox } from './state.js'
+import { state, loadImage, applySettings, setThemeList, setThemeNotifier, setSource, dirtyBBox, rectContains } from './state.js'
 import { MASK_GROUP, DRAW_GROUP, ANNOT_GROUP, isVectorGroup } from './effect.js'
+import { isSegmentShape } from './annotations.js'
 import * as cmd from './commands.js'
-import { fit, paint, toImage, drawOverlay, exportPng, rasterizeSource } from './view.js'
+import { fit, paint, toImage, drawOverlay, exportPng, rasterizeSource, viewScale } from './view.js'
 import { init as initStatusbar, refresh as statusbarRefresh } from './statusbar.js'
 import { isProfileEditorOpen, closeProfileEditor } from './profile-editor.js'
 import { isDrawColorEditorOpen, closeDrawColorEditor } from './draw-color-editor.js'
@@ -18,6 +19,13 @@ import { openTextEditor, isTextEditorOpen, commitTextEditor, cancelTextEditor } 
 const wrapEl = document.getElementById('wrap')
 const hintEl = document.getElementById('hint')
 const toastEl = document.getElementById('toast')
+
+const SEGMENT_HIT_SLOP_CSS = 4
+
+/** Line/arrow hit slop in image px: a constant on-screen distance at any fit zoom. */
+function segmentHitSlop() {
+  return Math.ceil(SEGMENT_HIT_SLOP_CSS / viewScale())
+}
 
 let toastTimer = null
 function toast(msg) {
@@ -42,9 +50,10 @@ function unionRect(a, b) {
 }
 
 function findTopmostRectAt(x, y) {
+  const slop = segmentHitSlop()
   for (let i = state.rects.length - 1; i >= 0; i--) {
     const r = state.rects[i]
-    if (x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h) return r
+    if (rectContains(r, x, y, slop)) return r
   }
   return null
 }
@@ -144,7 +153,10 @@ wrapEl.addEventListener('pointerup', (e) => {
     const idx = state.rects.indexOf(dragRect)
     if (idx !== -1) state.rects.splice(idx, 1)
     const bbox = dirtyBBox(dragRect)
-    if (dragRect.w < 3 || dragRect.h < 3) {
+    const tooSmall = isSegmentShape(dragRect)
+      ? Math.max(dragRect.w, dragRect.h) < 3
+      : dragRect.w < 3 || dragRect.h < 3
+    if (tooSmall) {
       paint(bbox)
     } else if (dragRect.group === ANNOT_GROUP) {
       paint(bbox)
@@ -315,7 +327,7 @@ window.addEventListener('keydown', (e) => {
   }
 
   if (e.key === 'Delete' || e.key === 'Backspace' || e.key === 'x' || e.key === 'X') {
-    if (!cmd.deleteAtPointer(lastPointer.x, lastPointer.y)) toast('No rectangle under the cursor')
+    if (!cmd.deleteAtPointer(lastPointer.x, lastPointer.y, segmentHitSlop())) toast('No rectangle under the cursor')
   }
 })
 

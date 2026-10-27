@@ -27,7 +27,7 @@ import {
   THEME_VERSION, DRAW_COLOR_COUNT, DEFAULT_DRAW_COLORS, copyDrawColors, isValidHexColor,
   isValidProfile, copyProfiles, normalizeTheme, nextForkId, nextForkName
 } from './themes.js'
-import { annotationPad, DRAW_SHAPES } from './annotations.js'
+import { annotationPad, DRAW_SHAPES, isSegmentShape } from './annotations.js'
 
 const UNDO_CAP = 100
 const SETTINGS_VERSION = 6
@@ -85,8 +85,11 @@ export const state = {
   scale: 1
 }
 
-function rectContains(r, x, y) {
-  return x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h
+/** Pointer hit test. Lines/arrows also hit within `slop` image px of their bbox,
+ *  so a 1 px-tall horizontal (or 1 px-wide vertical) segment stays reachable. */
+export function rectContains(r, x, y, slop = 0) {
+  const s = isSegmentShape(r) ? slop : 0
+  return x >= r.x - s && x < r.x + r.w + s && y >= r.y - s && y < r.y + r.h + s
 }
 
 function rectBBox(r) {
@@ -387,10 +390,10 @@ export function addRect(rect) {
   return dirtyBBox(rect)
 }
 
-export function deleteAt(x, y) {
+export function deleteAt(x, y, slop = 0) {
   for (let i = state.rects.length - 1; i >= 0; i--) {
     const r = state.rects[i]
-    if (rectContains(r, x, y)) {
+    if (rectContains(r, x, y, slop)) {
       state.rects.splice(i, 1)
       state.selected.delete(r)
       pushUndo({ t: 'del', rect: r, index: i })

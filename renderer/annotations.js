@@ -20,15 +20,20 @@ export function annotationPad(scale) {
   return Math.ceil(Math.max(ARROW_HEAD_HALF * scale, STROKE_W * scale * 1.5) + STROKE_W * scale) + 1
 }
 
-/** Tail-then-tip endpoints for a D line or arrow. flipX/flipY record which corner the
- *  drag started from — the one piece of direction a normalised bbox can't express. */
+/** Tail-then-tip endpoints at the drag's start and end pixels. w/h are inclusive
+ *  extents (|d| + 1), hence the - 1. flipX/flipY record the starting corner. */
 export function segmentPoints(rect) {
   return {
-    x0: rect.flipX ? rect.x + rect.w : rect.x,
-    y0: rect.flipY ? rect.y + rect.h : rect.y,
-    x1: rect.flipX ? rect.x : rect.x + rect.w,
-    y1: rect.flipY ? rect.y : rect.y + rect.h
+    x0: rect.flipX ? rect.x + rect.w - 1 : rect.x,
+    y0: rect.flipY ? rect.y + rect.h - 1 : rect.y,
+    x1: rect.flipX ? rect.x : rect.x + rect.w - 1,
+    y1: rect.flipY ? rect.y : rect.y + rect.h - 1
   }
+}
+
+/** D-group line or arrow: geometry is the segment between two bbox corners, not the box. */
+export function isSegmentShape(rect) {
+  return rect.group === DRAW_GROUP && (rect.shape === 'line' || rect.shape === 'arrow')
 }
 
 /** Greedy word-wrap using ctx.measureText; splits on \n first. A single word

@@ -7,7 +7,7 @@ import {
   state, addRect, deleteAt, setGroupProfile, setGroupSign, setGroupBinding, setMaskStyle, toggleActiveSign, setProfileChannel,
   setProfileLinked, resetProfile, undo, redo, selectOnly, toggleSelect, clearSelection, assignSelectedGroup, setThemeList,
   applyTheme, applySettings, resizeTo, setSource, setRectText, setDrawShape, setDrawColor,
-  setDrawPaletteColor, resetDrawPaletteColor, setTextColor, dirtyBBox
+  setDrawPaletteColor, resetDrawPaletteColor, setTextColor, dirtyBBox, rectContains
 } from '../renderer/state.js'
 import { annotationPad, segmentPoints, wrapLines } from '../renderer/annotations.js'
 import { DEFAULT_DRAW_COLORS, normalizeTheme } from '../renderer/themes.js'
@@ -974,21 +974,42 @@ console.log('vector group kernel guard: OK')
 
 assert.deepStrictEqual(
   segmentPoints({ x: 10, y: 20, w: 30, h: 40, flipX: false, flipY: false }),
-  { x0: 10, y0: 20, x1: 40, y1: 60 },
+  { x0: 10, y0: 20, x1: 39, y1: 59 },
   'segmentPoints: no flip runs tail top-left to tip bottom-right'
 )
 assert.deepStrictEqual(
   segmentPoints({ x: 10, y: 20, w: 30, h: 40, flipX: true, flipY: false }),
-  { x0: 40, y0: 20, x1: 10, y1: 60 },
+  { x0: 39, y0: 20, x1: 10, y1: 59 },
   'segmentPoints: flipX swaps the x tail/tip'
 )
 assert.deepStrictEqual(
   segmentPoints({ x: 10, y: 20, w: 30, h: 40, flipX: true, flipY: true }),
-  { x0: 40, y0: 60, x1: 10, y1: 20 },
+  { x0: 39, y0: 59, x1: 10, y1: 20 },
   'segmentPoints: both flips put the tail at the bottom-right corner'
+)
+assert.deepStrictEqual(
+  segmentPoints({ x: 5, y: 7, w: 20, h: 1, flipX: true, flipY: false }),
+  { x0: 24, y0: 7, x1: 5, y1: 7 },
+  'segmentPoints: a 1 px-tall bbox is an exactly horizontal segment'
 )
 
 console.log('segmentPoints: OK')
+
+const hLine = { x: 1, y: 1, w: 6, h: 1, group: DRAW_GROUP, shape: 'line', color: 0, flipX: false, flipY: false }
+assert.strictEqual(rectContains(hLine, 3, 3), false, 'segment hit testing is exact without slop')
+assert.strictEqual(rectContains(hLine, 3, 3, 2), true, 'segment hit slop reaches beyond a thin bbox')
+assert.strictEqual(rectContains(hLine, 3, 4, 2), false, 'segment hit slop excludes its outer edge')
+assert.strictEqual(rectContains({ ...hLine, shape: 'rect' }, 3, 3, 2), false, 'rectangle outlines keep exact bbox hits')
+
+state.rects = [hLine]
+state.undo = []
+state.redo = []
+assert.strictEqual(deleteAt(3, 3), null, 'deleteAt defaults to exact bbox hits')
+assert.strictEqual(state.rects.length, 1, 'an exact miss leaves the line intact')
+assert.ok(deleteAt(3, 3, 2), 'deleteAt accepts a pointer within segment hit slop')
+assert.strictEqual(state.rects.length, 0, 'a slop hit deletes the line')
+
+console.log('segment hit slop: OK')
 
 const stubCtx = { measureText: (s) => ({ width: s.length }) }
 assert.deepStrictEqual(wrapLines(stubCtx, 'aaa bbb', 4), ['aaa', 'bbb'], 'wrapLines greedily wraps on word boundaries')
