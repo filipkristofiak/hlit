@@ -2,7 +2,7 @@
 // Plain node:assert; throws (non-zero exit) on failure.
 
 import assert from 'node:assert'
-import { GROUP_COUNT, PROFILE_COUNT, MASK_NOISE, MASK_PIXELATE, MASK_LIGHT, MASK_DARK, MASK_PIXEL_BLOCK, GROUP_CODE_BITS, GROUP_CODE_MASK, MASK_GROUP, DRAW_GROUP, ANNOT_GROUP, buildShiftTable, stampModeMap, buildMaskEntries, applyEffect } from '../renderer/effect.js'
+import { GROUP_COUNT, PROFILE_COUNT, MASK_NOISE, MASK_PIXELATE, MASK_LIGHT, MASK_DARK, MASK_MIST, MASK_PIXEL_BLOCK, MASK_MIST_RADIUS, MASK_MIST_KEEP, GROUP_CODE_BITS, GROUP_CODE_MASK, MASK_GROUP, DRAW_GROUP, ANNOT_GROUP, buildShiftTable, stampModeMap, buildMaskEntries, applyEffect } from '../renderer/effect.js'
 import {
   state, addRect, deleteAt, setGroupProfile, setGroupSign, setGroupBinding, setMaskStyle, toggleActiveSign, setProfileChannel,
   setProfileLinked, resetProfile, undo, redo, selectOnly, toggleSelect, clearSelection, assignSelectedGroup, setThemeList,
@@ -313,6 +313,77 @@ const outPixelate2 = runPixelate(pixelateRect2, 1)
 assert.deepStrictEqual(outPixelate2, outPixelate, 'a second pixelate run over a fresh rect object with the same gen is byte-identical')
 
 console.log('mask pixelate: OK')
+
+// Mist preserves table rules while fogging short glyphs on light/dark backgrounds.
+const MW = 64
+const MH = 48
+
+function makeMistBase(bg, ink, inkPixels) {
+  const buf = new Uint8ClampedArray(MW * MH * 4)
+  for (let i = 0; i < MW * MH; i++) {
+    const o = i * 4
+    buf[o] = bg[0]
+    buf[o + 1] = bg[1]
+    buf[o + 2] = bg[2]
+    buf[o + 3] = 255
+  }
+  for (const [x, y] of inkPixels) {
+    const o = (y * MW + x) * 4
+    buf[o] = ink[0]
+    buf[o + 1] = ink[1]
+    buf[o + 2] = ink[2]
+  }
+  return buf
+}
+
+function runMist(buf, rect, gen) {
+  const dirty = { x: 0, y: 0, w: MW, h: MH }
+  const mm = new Uint16Array(MW * MH)
+  stampModeMap(mm, MW, [rect], dirty)
+  const entries = buildMaskEntries([rect], buf, MW, MH, dirty, gen, MASK_MIST)
+  const outBuf = new Uint8ClampedArray(MW * MH * 4)
+  applyEffect(buf, outBuf, mm, MW, maskShiftTable, dirty, entries)
+  return outBuf
+}
+
+function getMistRGBA(buf, x, y) {
+  const o = (y * MW + x) * 4
+  return [buf[o], buf[o + 1], buf[o + 2], buf[o + 3]]
+}
+
+const mistGlyph = []
+for (let y = 34; y <= 36; y++) {
+  for (let x = 40; x <= 42; x++) mistGlyph.push([x, y])
+}
+const mistRule = Array.from({ length: MW }, (_, x) => [x, 10])
+const mistLightBase = makeMistBase([255, 255, 255], [0, 0, 0], [...mistRule, ...mistGlyph])
+const mistRect = { x: 0, y: 0, w: MW, h: MH, group: MASK_GROUP }
+const outMistLight = runMist(mistLightBase, mistRect, 1)
+const mistLine = Math.round(255 - 255 * MASK_MIST_KEEP)
+for (let x = 0; x < MW; x++) {
+  assert.deepStrictEqual(getMistRGBA(outMistLight, x, 10), [mistLine, mistLine, mistLine, 255],
+    `mist preserves the full horizontal rule at (${x},10)`)
+}
+assert.deepStrictEqual(getMistRGBA(outMistLight, 5, 30), [255, 255, 255, 255],
+  'mist fog matches the light background away from ink')
+for (let y = 11 + MASK_MIST_RADIUS; y < MH; y++) {
+  for (let x = 0; x < MW; x++) {
+    const [r, g, b, a] = getMistRGBA(outMistLight, x, y)
+    assert.ok(r >= 230 && g >= 230 && b >= 230, `mist fogs the short glyph at (${x},${y})`)
+    assert.strictEqual(a, 255, `mist pixel (${x},${y}) is opaque`)
+  }
+}
+
+const mistDarkBase = makeMistBase([20, 20, 30], [230, 230, 230], mistGlyph)
+const outMistDark = runMist(mistDarkBase, { ...mistRect }, 2)
+assert.deepStrictEqual(getMistRGBA(outMistDark, 5, 10), [20, 20, 30, 255],
+  'mist fog matches the tinted dark background away from ink')
+assert.ok(getMistRGBA(outMistDark, 41, 35)[0] <= 40, 'mist fogs the bright glyph on a dark background')
+const outMistLight2 = runMist(mistLightBase, { x: 0, y: 0, w: MW, h: MH, group: MASK_GROUP }, 1)
+assert.deepStrictEqual(outMistLight2, outMistLight,
+  'a second mist run over a fresh rect object with the same gen is byte-identical')
+
+console.log('mask mist: OK')
 
 // 6. Noise: not flat, not the source, and every pixel lies within the sampled palette.
 const noiseRect = { x: 0, y: 0, w: 4, h: 2, group: MASK_GROUP }
@@ -791,6 +862,20 @@ await applySettings({
   maskStyle: 9
 })
 assert.strictEqual(state.maskStyle, MASK_NOISE, 'an out-of-range maskStyle falls back to MASK_NOISE')
+
+await applySettings({
+  version: 6,
+  theme: 'default',
+  groups: [
+    { profile: 0, sign: 1 },
+    { profile: 1, sign: 1 },
+    { profile: 2, sign: -1 },
+    { profile: 3, sign: 1 },
+    { profile: 4, sign: -1 }
+  ],
+  maskStyle: MASK_MIST
+})
+assert.strictEqual(state.maskStyle, MASK_MIST, 'maskStyle 5 (mist) is the top of the range and loads')
 
 await applySettings({
   version: 3,

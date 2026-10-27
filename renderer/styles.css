@@ -340,6 +340,13 @@ body {
     repeating-linear-gradient(90deg, rgba(0, 0, 0, .55) 0 3px, transparent 3px 6px);
 }
 
+.picker-cell.mask-mist {
+  background-image:
+    linear-gradient(rgba(255, 255, 255, .55), rgba(255, 255, 255, .55)),
+    repeating-linear-gradient(0deg, rgba(0, 0, 0, .45) 0 1px, transparent 1px 7px),
+    repeating-linear-gradient(90deg, rgba(0, 0, 0, .45) 0 1px, transparent 1px 12px);
+}
+
 .picker-cell.picker-shape {
   background: #2c2c2c;
   color: #e6e6e6;

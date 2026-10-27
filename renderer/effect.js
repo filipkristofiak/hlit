@@ -8,12 +8,15 @@ export const GROUP_TOTAL = 8          // sizes the status bar and the Tab cycle
 export const PROFILE_COUNT = 5
 export const DEFAULT_SHIFT = { r: 0, g: 0, b: -160 }
 
-export const MASK_STYLE_COUNT = 4
+export const MASK_STYLE_COUNT = 5
 export const MASK_NOISE = 1
 export const MASK_PIXELATE = 2
 export const MASK_LIGHT = 3
 export const MASK_DARK = 4
+export const MASK_MIST = 5
 export const MASK_PIXEL_BLOCK = 12   // mosaic cell edge, image pixels
+export const MASK_MIST_RADIUS = 12   // directional box-blur half-window, image pixels
+export const MASK_MIST_KEEP = 0.5    // blurred structure showing through the fog
 // modeMap cell (Uint16): the low GROUP_CODE_BITS hold the highlight code
 // (0 = none, 1..GROUP_COUNT = rect.group + 1), the remaining 13 bits hold the
 // mask slot (0 = not masked, otherwise the mask rect's index + 1). A pixel can
@@ -171,7 +174,8 @@ function clamp255(v) {
  * writes any other buffer) and cached on the rect itself. Recomputed only
  * when `gen` (bumped on every image load/resize) or the rect's own geometry
  * differs from the cache, which is what makes a live drag recompute on every
- * pointermove while a settled rect stays cheap. Drives MASK_NOISE only.
+ * pointermove while a settled rect stays cheap. Drives MASK_NOISE, and
+ * MASK_MIST's fog colour via palette[0].
  *
  * Returns `{ gen, x, y, w, h, seed, count, palette: Uint8Array(24),
  * cum: Uint32Array(8) }`. `palette`/`cum` hold `count` (<=8) populated
@@ -292,7 +296,7 @@ export function maskStatsFor(rect, base, w, h, gen) {
  * onto the image) is filled with MASK_DARK_RGB, so a degenerate rect still
  * renders as an opaque box rather than transparent or NaN.
  *
- * Unlike the other three styles, pixelate is NOT content-independent: a
+ * Like MASK_MIST and unlike noise/light/dark, pixelate is NOT content-independent: a
  * mosaic cell is an average of the pixels under it, and generate-and-test
  * attacks (Depix, Bishop Fox's Unredacter) can recover text from a mosaic.
  * It exists because it was explicitly requested, not because it is safe —
@@ -350,10 +354,119 @@ function maskMosaicFor(rect, base, w, h, gen) {
 }
 
 /**
+ * Fog in the region's dominant colour, with directional blur keeping lines.
+ * Cached by generation and rect geometry, like `maskMosaicFor`.
+ * Built from source pixels: like pixelate it is NOT content-independent.
+ * Blur-inversion/known-font attacks can recover content; the help overlay
+ * must keep saying so.
+ */
+function maskMistFor(rect, base, w, h, gen) {
+  const cached = rect.maskMist
+  if (cached && cached.gen === gen && cached.x === rect.x && cached.y === rect.y &&
+      cached.w === rect.w && cached.h === rect.h) {
+    return cached
+  }
+
+  const x0 = Math.max(0, rect.x)
+  const y0 = Math.max(0, rect.y)
+  const x1 = Math.min(w, rect.x + rect.w)
+  const y1 = Math.min(h, rect.y + rect.h)
+  const cw = Math.max(0, x1 - x0)
+  const ch = Math.max(0, y1 - y0)
+  const p = maskStatsFor(rect, base, w, h, gen).palette
+  const mist = Uint8Array.of(p[0], p[1], p[2])
+  const pixels = new Uint8Array(cw * ch * 3)
+  const radius = MASK_MIST_RADIUS
+
+  if (cw > 0 && ch > 0) {
+    for (let y = y0; y < y1; y++) {
+      let sr = 0
+      let sg = 0
+      let sb = 0
+      let n = 0
+      for (let x = x0; x < Math.min(x1, x0 + radius + 1); x++) {
+        const i = (y * w + x) * 4
+        sr += base[i]
+        sg += base[i + 1]
+        sb += base[i + 2]
+        n++
+      }
+      for (let x = x0; x < x1; x++) {
+        const i = ((y - y0) * cw + x - x0) * 3
+        pixels[i] = Math.round(sr / n)
+        pixels[i + 1] = Math.round(sg / n)
+        pixels[i + 2] = Math.round(sb / n)
+        if (x + radius + 1 < x1) {
+          const add = (y * w + x + radius + 1) * 4
+          sr += base[add]
+          sg += base[add + 1]
+          sb += base[add + 2]
+          n++
+        }
+        if (x - radius >= x0) {
+          const sub = (y * w + x - radius) * 4
+          sr -= base[sub]
+          sg -= base[sub + 1]
+          sb -= base[sub + 2]
+          n--
+        }
+      }
+    }
+
+    const stride = cw * 3
+    const col = new Int32Array(stride)
+    // Preserve outgoing horizontal rows: pixels is overwritten with fog below.
+    const ringRows = Math.min(ch, radius + 1)
+    const rows = new Uint8Array(ringRows * stride)
+    let n = Math.min(ch, radius + 1)
+    for (let y = 0; y < n; y++) {
+      for (let i = 0; i < stride; i++) col[i] += pixels[y * stride + i]
+    }
+    for (let y = 0; y < ch; y++) {
+      const row = y * stride
+      const saved = (y % ringRows) * stride
+      for (let x = 0; x < stride; x += 3) {
+        const i = row + x
+        const hr = pixels[i]
+        const hg = pixels[i + 1]
+        const hb = pixels[i + 2]
+        rows[saved + x] = hr
+        rows[saved + x + 1] = hg
+        rows[saved + x + 2] = hb
+        const vr = col[x] / n
+        const vg = col[x + 1] / n
+        const vb = col[x + 2] / n
+        const dh = Math.abs(hr - mist[0]) + Math.abs(hg - mist[1]) + Math.abs(hb - mist[2])
+        const dv = Math.abs(vr - mist[0]) + Math.abs(vg - mist[1]) + Math.abs(vb - mist[2])
+        const vertical = dv > dh
+        pixels[i] = Math.round(mist[0] + ((vertical ? vr : hr) - mist[0]) * MASK_MIST_KEEP)
+        pixels[i + 1] = Math.round(mist[1] + ((vertical ? vg : hg) - mist[1]) * MASK_MIST_KEEP)
+        pixels[i + 2] = Math.round(mist[2] + ((vertical ? vb : hb) - mist[2]) * MASK_MIST_KEEP)
+      }
+      if (y + radius + 1 < ch) {
+        const add = (y + radius + 1) * stride
+        for (let i = 0; i < stride; i++) col[i] += pixels[add + i]
+        n++
+      }
+      if (y - radius >= 0) {
+        const sub = ((y - radius) % ringRows) * stride
+        for (let i = 0; i < stride; i++) col[i] -= rows[sub + i]
+        n--
+      }
+    }
+  }
+
+  const result = { gen, x: rect.x, y: rect.y, w: rect.w, h: rect.h, x0, y0, cw, ch, mist, pixels }
+  rect.maskMist = result
+  return result
+}
+
+/**
  * Sparse `Array(rects.length)`: entries exist for rects in `MASK_GROUP`, and
  * every entry carries the same group-wide `style` — `{ style, stats }` for
- * MASK_NOISE, `{ style, mosaic }` for MASK_PIXELATE, `{ style }` alone for
- * MASK_LIGHT/MASK_DARK (no sampling at all); every other index stays
+ * MASK_NOISE, `{ style, mosaic }` for MASK_PIXELATE, `{ style, mist }` for
+ * MASK_MIST, `{ style }` alone for MASK_LIGHT/MASK_DARK (no sampling at all);
+ * every other index stays
  * `undefined`. Index alignment with the codes `stampModeMap` stamps is what
  * makes the `applyEffect` lookup O(1) with no separate registry.
  */
@@ -369,7 +482,9 @@ export function buildMaskEntries(rects, base, w, h, dirty, gen, style) {
       ? { style, stats: maskStatsFor(r, base, w, h, gen) }
       : style === MASK_PIXELATE
         ? { style, mosaic: maskMosaicFor(r, base, w, h, gen) }
-        : { style }
+        : style === MASK_MIST
+          ? { style, mist: maskMistFor(r, base, w, h, gen) }
+          : { style }
   }
   return entries
 }
@@ -379,10 +494,10 @@ export function buildMaskEntries(rects, base, w, h, dirty, gen, style) {
  * `MASK_DARK` are fixed, content-independent fills; `MASK_NOISE` draws a
  * palette entry per 2x2 grain cell (clumped speckle) with independent
  * per-pixel jitter (breaks the flatness of the 8-colour palette); those
- * three are unrecoverable. `MASK_PIXELATE` reads its rect's mosaic cell —
- * a block average of the source — which IS recoverable by a determined
- * attacker (see `maskMosaicFor`); do not "harden" it into something
- * content-independent without updating the help overlay's caveat. All four
+ * three are unrecoverable. `MASK_PIXELATE` and `MASK_MIST` read blurred or
+ * averaged source pixels, which ARE recoverable by a determined attacker
+ * (see `maskMosaicFor` and `maskMistFor`); do not "harden" them into something
+ * content-independent without updating the help overlay's caveat. All five
  * styles write opaque alpha: a mask is flat pixels with nothing underneath.
  */
 function writeMaskPixel(out, o, entry, x, y) {
@@ -416,6 +531,30 @@ function writeMaskPixel(out, o, entry, x, y) {
     out[o] = m.cells[ci]
     out[o + 1] = m.cells[ci + 1]
     out[o + 2] = m.cells[ci + 2]
+    out[o + 3] = 255
+    return
+  }
+
+  if (style === MASK_MIST) {
+    const m = entry.mist
+    if (m.cw === 0 || m.ch === 0) {
+      out[o] = m.mist[0]
+      out[o + 1] = m.mist[1]
+      out[o + 2] = m.mist[2]
+      out[o + 3] = 255
+      return
+    }
+    let lx = x - m.x0
+    let ly = y - m.y0
+    // Belt-and-braces clamp, as in pixelate.
+    if (lx < 0) lx = 0
+    else if (lx >= m.cw) lx = m.cw - 1
+    if (ly < 0) ly = 0
+    else if (ly >= m.ch) ly = m.ch - 1
+    const pi = (ly * m.cw + lx) * 3
+    out[o] = m.pixels[pi]
+    out[o + 1] = m.pixels[pi + 1]
+    out[o + 2] = m.pixels[pi + 2]
     out[o + 3] = 255
     return
   }

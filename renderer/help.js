@@ -25,7 +25,7 @@ const SHORTCUTS = [
   ['in picker: h l \u2190 \u2192', 'Move between profiles'],
   ['in picker: j k \u2191 \u2193', 'Move between the light and dark rows'],
   ['in picker: g / G', 'First / last profile'],
-  ['in the mask picker: 1 \u2013 4', 'Noise / pixelate / light / dark'],
+  ['in the mask picker: 1 \u2013 5', 'Noise / pixelate / light / dark / mist'],
   ['in the draw picker: 1 \u2013 3, then 1 \u2013 5', 'Shape (rectangle / line / arrow), then colour'],
   ['in draw/text pickers: E / shift-click', 'Edit that colour'],
   ['in a text box: Enter', 'Commit the text (shift+Enter for a new line)'],
@@ -51,9 +51,9 @@ const THEME_NOTES = [
 ]
 
 const MASKING_NOTES = [
-  'M is a group like 1\u20135, reached with m: every rectangle in it is masked instead of colour-shifted, and p on it opens the mask menu (1 noise, 2 pixelate, 3 light, 4 dark) for the whole group.',
+  'M is a group like 1\u20135, reached with m: every rectangle in it is masked instead of colour-shifted, and p on it opens the mask menu (1 noise, 2 pixelate, 3 light, 4 dark, 5 mist) for the whole group.',
   'Noise draws from the region\u2019s colour histogram; light and dark are fixed greys. None of the three reads the pixel underneath, so they cannot be reversed from the export.',
-  'Pixelate is the exception: each block is an average of the pixels under it, so the original content is still in the output and can be recovered by a determined attacker. Use it for tidiness, not for secrets.',
+  'Pixelate and mist are the exceptions. Pixelate averages each block; mist lays a fog in the region\u2019s own background colour (white on white backgrounds, black on black ones, and tinted to match otherwise) through which lines, fills and table layout stay visible while text blurs away. Both are built from the pixels underneath, so a determined attacker can recover the content. Use them for tidiness and for sharing with colleagues, not for secrets.',
   'A mask still hides the pixels underneath, whichever was drawn first \u2014 dragging a highlight across a masked area cannot uncover it, but does tint the mask\u2019s own colour with that group\u2019s shift.'
 ]
 

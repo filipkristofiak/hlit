@@ -55,22 +55,25 @@ locked theme forks it to an unlocked copy. Palette edits are not undoable.
 `m`/`M` selects the `M` group — makes it active, or (with a selection)
 moves the selected rectangles into it, exactly like a digit key does for a
 colour group. Every rectangle in `M` is masked with the group's current
-style, repainted from the region's own geometry and colour statistics, not
-the pixel underneath.
+style. Noise uses the region's colour statistics; pixelate and mist use
+the source pixels, while light and dark are fixed fills.
 
-Four styles, picked from the `M` group's Mask menu (`p` while `M` is
-active) with `1`–`4`:
+Five styles, picked from the `M` group's Mask menu (`p` while `M` is
+active) with `1`–`5`:
 
 - **Noise** (default) — speckled grain in the region's own colours.
 - **Pixelate** — a coarse mosaic averaged from the pixels underneath.
 - **Light** — a fixed light grey box.
 - **Dark** — a fixed dark grey box.
+- **Mist** — fog in the region's dominant background colour, preserving
+  lines, fills, table layout and rough text blobs while blurring the text.
+  White backgrounds get white fog; dark or tinted backgrounds keep their colour.
 
 Noise, light, and dark never read the pixel underneath — nothing in the
-export can be reversed back to the source. **Pixelate is the exception**:
-each block is an average of the source pixels, so the original content is
-still recoverable by a determined attacker (mosaic inversion attacks).
-It's offered for tidiness, not for secrets.
+export can be reversed back to the source. **Pixelate and mist are the
+exceptions**: both are built from source pixels, so a determined attacker
+can recover content through mosaic/blur inversion or known-font attacks.
+Use them for tidiness and sharing with colleagues, not for secrets.
 
 A mask always hides the pixels underneath, whichever was drawn first —
 dragging a highlight across a masked area cannot uncover it, but does tint
@@ -130,7 +133,7 @@ export at the currently active scale (WYSIWYG).
 | in pickers: `g` / `G` | Jump to the first / last entry |
 | in pickers: `Enter`, digits | Apply the highlighted entry / take one directly |
 | in the binding picker: `E` / shift-click on a light/dark cell | Edit that profile's vectors |
-| in the mask picker: `1`–`4` | Noise / pixelate / light / dark |
+| in the mask picker: `1`–`5` | Noise / pixelate / light / dark / mist |
 | in the draw picker: `1`–`3`, then `1`–`5` | Choose rectangle / line / arrow, then colour |
 | in draw/text pickers: `E` / shift-click a colour | Edit that theme colour |
 
