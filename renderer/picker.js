@@ -10,14 +10,14 @@ import { DRAW_COLOR_COUNT } from './themes.js'
 import { DRAW_SHAPES } from './annotations.js'
 import { openProfileEditor } from './profile-editor.js'
 import { openDrawColorEditor } from './draw-color-editor.js'
-import { PROFILE_COUNT, MASK_STYLE_COUNT, MASK_NOISE, MASK_PIXELATE, MASK_GROUP, DRAW_GROUP, ANNOT_GROUP } from './effect.js'
+import { PROFILE_COUNT, MASK_STYLE_COUNT, MASK_NOISE, MASK_PIXELATE, MASK_MIST, MASK_GROUP, DRAW_GROUP, ANNOT_GROUP } from './effect.js'
 
 const COLOR_ROWS = [
   { kind: 'shift', sign: 1, side: 'pos', label: 'Light' },
   { kind: 'shift', sign: -1, side: 'neg', label: 'Dark' }
 ]
 const MASK_ROWS = [{ kind: 'mask', label: 'Mask' }]
-const MASK_LABELS = ['noise', 'pixelate', 'light', 'dark']
+const MASK_LABELS = ['noise', 'pixelate', 'light', 'dark', 'mist']
 const DRAW_ROWS = [{ kind: 'shape', label: 'Shape' }, { kind: 'drawcolor', label: 'Colour', target: 'draw' }]
 const TEXT_ROWS = [{ kind: 'drawcolor', label: 'Colour', target: 'text' }]
 const SHAPE_LABELS = { rect: 'rectangle', line: 'line', arrow: 'arrow' }
@@ -115,6 +115,7 @@ function buildGrid(nextMode) {
         cell.style.backgroundColor = maskColor(col + 1)
         if (col + 1 === MASK_NOISE) cell.classList.add('mask-noise')
         else if (col + 1 === MASK_PIXELATE) cell.classList.add('mask-pixelate')
+        else if (col + 1 === MASK_MIST) cell.classList.add('mask-mist')
         cell.title = `Mask \u2014 ${MASK_LABELS[col]}`
       } else if (r.kind === 'shape') {
         cell.classList.add('picker-shape')
@@ -160,7 +161,7 @@ function buildGrid(nextMode) {
   const foot = document.createElement('div')
   foot.className = 'picker-foot'
   foot.textContent = nextMode === 'mask'
-    ? '1\u20134 pick \u00b7 hl/arrows move \u00b7 gG ends \u00b7 Enter apply \u00b7 q close \u00b7 1 noise 2 pixelate 3 light 4 dark'
+    ? '1\u20135 pick \u00b7 hl/arrows move \u00b7 gG ends \u00b7 Enter apply \u00b7 q close \u00b7 1 noise 2 pixelate 3 light 4 dark 5 mist'
     : nextMode === 'draw'
     ? '1\u20133 shape, then 1\u20135 colour \u00b7 hjkl/arrows move \u00b7 Enter apply \u00b7 E edit colour \u00b7 q close'
     : nextMode === 'text'
